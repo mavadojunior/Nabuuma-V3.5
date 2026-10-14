@@ -1,0 +1,26 @@
+Security Policy
+
+Scope
+
+Nabuuma V3.5 handles application, authentication, database, and potentially sensitive business data. Security vulnerabilities must be reported and handled responsibly.
+
+Reporting a Vulnerability
+
+- Do not publicly disclose suspected vulnerabilities before they have been assessed.
+- Never include API keys, access tokens, passwords, database credentials, or personal data in public issues or pull requests.
+- Report vulnerabilities privately through GitHub's private vulnerability reporting feature, if enabled.
+- If private reporting is unavailable, contact the repository maintainers through an established private channel. Do not publish exploit details while seeking a reporting route.
+
+Response and Remediation
+
+Maintainers should acknowledge reports, assess severity and impact, reproduce the issue where possible, and prioritize remediation according to risk.
+
+Fixes should be reviewed and tested before release. Security-sensitive changes must preserve authentication, authorization, tenant isolation, database access controls, and automated security checks.
+
+Disclosure
+
+Coordinate public disclosure with the maintainers after a fix or mitigation is available. Avoid publishing details that would unnecessarily expose users or systems to exploitation.
+
+Credential Handling
+
+Never commit secrets or production credentials. Store credentials in approved secret-management systems and rotate any credential suspected of exposure.
