@@ -761,7 +761,9 @@ BEGIN
         RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
       EXCEPTION
         WHEN OTHERS THEN
-          RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+          RAISE LOG 'rls_auto_enable: failed to enable RLS on % (SQLSTATE %, error %)',
+            cmd.object_identity, SQLSTATE, SQLERRM;
+          RAISE;
       END;
      ELSE
         RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
@@ -860,20 +862,41 @@ CREATE OR REPLACE FUNCTION public.publish_recipe(p_recipe uuid)
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path TO pg_catalog, pg_temp
 AS $function$
-declare r recipe_versions;
-begin
-    select * into r from recipe_versions where id=p_recipe;
-    if not has_role(r.business_id,ARRAY['owner','manager','trainer']::member_role[]) then
-        raise exception 'Not permitted';
-    end if;
-    update recipe_versions
-       set status='archived'
-     where product_id=r.product_id and status='published' and id<>r.id;
-    update recipe_versions set status='published',published_at=now() where id=r.id;
-    update products set active_recipe_version_id=r.id where id=r.product_id;
-end
+DECLARE
+    r public.recipe_versions%ROWTYPE;
+BEGIN
+    SELECT * INTO r
+      FROM public.recipe_versions
+     WHERE id = p_recipe;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+
+    IF NOT public.has_role(
+        r.business_id,
+        ARRAY['owner','manager','trainer']::public.member_role[]
+    ) THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+
+    UPDATE public.recipe_versions
+       SET status = 'archived'
+     WHERE product_id = r.product_id
+       AND status = 'published'
+       AND id <> r.id;
+
+    UPDATE public.recipe_versions
+       SET status = 'published',
+           published_at = pg_catalog.now()
+     WHERE id = r.id;
+
+    UPDATE public.products
+       SET active_recipe_version_id = r.id
+     WHERE id = r.product_id;
+END
 $function$;
 ALTER FUNCTION public.publish_recipe(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.publish_recipe(uuid)
@@ -1428,8 +1451,32 @@ CREATE OR REPLACE FUNCTION public.publish_recipe(p_recipe uuid)
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$ declare r recipe_versions; begin select * into r from recipe_versions where id=p_recipe; if not has_role(r.business_id,ARRAY['owner','manager','trainer']::member_role[]) then raise exception 'Not permitted'; end if; update recipe_versions set status='archived' where product_id=r.product_id and status='published' and id<>r.id; update recipe_versions set status='published',published_at=now() where id=r.id; update products set active_recipe_version_id=r.id where id=r.product_id; end $function$;
+ SET search_path TO pg_catalog, pg_temp
+AS $function$
+DECLARE
+    r public.recipe_versions%ROWTYPE;
+BEGIN
+    SELECT * INTO r FROM public.recipe_versions WHERE id = p_recipe;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+    IF NOT public.has_role(
+        r.business_id,
+        ARRAY['owner','manager','trainer']::public.member_role[]
+    ) THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+    UPDATE public.recipe_versions
+       SET status = 'archived'
+     WHERE product_id = r.product_id AND status = 'published' AND id <> r.id;
+    UPDATE public.recipe_versions
+       SET status = 'published', published_at = pg_catalog.now()
+     WHERE id = r.id;
+    UPDATE public.products
+       SET active_recipe_version_id = r.id
+     WHERE id = r.product_id;
+END
+$function$;
 ALTER FUNCTION publish_recipe(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION publish_recipe(uuid) FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
 GRANT EXECUTE ON FUNCTION publish_recipe(uuid) TO "service_role";

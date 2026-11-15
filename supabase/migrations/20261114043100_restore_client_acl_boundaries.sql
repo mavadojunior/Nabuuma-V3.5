@@ -21,6 +21,13 @@ BEGIN
         WHERE n.nspname = 'public'
           AND c.relkind IN ('r', 'p')
     LOOP
+        -- PUBLIC membership is inherited by every API role. No public base
+        -- table should expose direct DML to all roles.
+        EXECUTE format(
+            'REVOKE INSERT, UPDATE, DELETE ON TABLE %I.%I FROM PUBLIC',
+            r.nspname,
+            r.relname
+        );
         EXECUTE format(
             'REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE %I.%I FROM PUBLIC, anon, authenticated',
             r.nspname,

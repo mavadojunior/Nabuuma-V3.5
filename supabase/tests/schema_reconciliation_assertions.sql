@@ -6,6 +6,7 @@ DECLARE
     v_balance_trigger_count integer;
     v_search_path text;
     v_function_name text;
+    v_public_view record;
 BEGIN
     SELECT count(*)
       INTO v_recipe_fk_count
@@ -85,6 +86,34 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Legacy SECURITY DEFINER search_path=public remains';
     END IF;
+
+    SELECT p.proconfig[array_position(p.proconfig, 'search_path=pg_catalog, pg_temp')]
+      INTO v_search_path
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname = 'publish_recipe'
+       AND p.pronargs = 1
+       AND p.prosecdef;
+
+    IF v_search_path IS DISTINCT FROM 'search_path=pg_catalog, pg_temp' THEN
+        RAISE EXCEPTION 'publish_recipe is missing a controlled SECURITY DEFINER search_path';
+    END IF;
+
+    FOR v_public_view IN
+        SELECT c.relname, c.reloptions
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relkind = 'v'
+    LOOP
+        IF NOT COALESCE(
+            v_public_view.reloptions @> ARRAY['security_invoker=true'],
+            false
+        ) THEN
+            RAISE EXCEPTION 'public view % is not security-invoker', v_public_view.relname;
+        END IF;
+    END LOOP;
 END
 $schema_assertions$;
 

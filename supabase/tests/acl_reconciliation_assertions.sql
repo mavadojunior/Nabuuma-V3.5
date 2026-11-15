@@ -384,3 +384,25 @@ DO $positive_assertions$ BEGIN
   IF NOT has_table_privilege('authenticated','public.stock_transfer_recommendations','SELECT') OR has_table_privilege('authenticated','public.stock_transfer_recommendations','INSERT') OR has_table_privilege('authenticated','public.stock_transfer_recommendations','UPDATE') OR has_table_privilege('authenticated','public.stock_transfer_recommendations','DELETE') THEN RAISE EXCEPTION 'stock_transfer_recommendations client boundary incorrect'; END IF;
   IF NOT has_table_privilege('authenticated','public.network_ledger_repair_lines','SELECT') OR has_table_privilege('service_role','public.network_ledger_repair_lines','INSERT') OR has_table_privilege('service_role','public.network_ledger_repair_lines','UPDATE') OR has_table_privilege('service_role','public.network_ledger_repair_lines','DELETE') THEN RAISE EXCEPTION 'network_ledger_repair_lines append-only boundary incorrect'; END IF;
 END $positive_assertions$;
+
+-- PUBLIC DML grants are inherited by every API role. The migration must
+-- remove the grant itself, not merely mask it with role-specific revokes.
+DO $public_dml_assertions$
+DECLARE
+  role_name text;
+  privilege_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    FOREACH privilege_name IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE'] LOOP
+      IF pg_catalog.has_table_privilege(
+        role_name,
+        'public.acl_public_dml_probe',
+        privilege_name
+      ) THEN
+        RAISE EXCEPTION 'PUBLIC % privilege still inherited by % on acl_public_dml_probe',
+          privilege_name, role_name;
+      END IF;
+    END LOOP;
+  END LOOP;
+END
+$public_dml_assertions$;
