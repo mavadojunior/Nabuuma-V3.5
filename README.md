@@ -6,7 +6,13 @@ Nabuuma V3.5 is the operational command centre for the Nabuuma hospitality ecosy
 
 It connects hospitality operations, procurement, inventory, suppliers, logistics, training, quality control, cross-border commerce, fiscalization, financial settlement, and cryptographic evidence into one controlled operational system.
 
+> **Repository status (2026-11-14):** this checkout currently contains database/security work and repository automation, not the complete application. The application directories and package scripts described below are target architecture, not implemented code in this branch. See the [repository audit](docs/REPOSITORY_AUDIT_2026-11-14.md) and [production migration-history reconciliation](docs/MIGRATION_HISTORY_RECONCILIATION_2026-11-14.md) before treating planned components or migrations as available.
+
 The system is designed to turn hospitality activity into traceable, auditable, and economically accountable operations.
+
+## Engineering Workflow
+
+Follow [AGENTS.md](AGENTS.md) and the [Engineering Workflow](docs/ENGINEERING_WORKFLOW.md) for change intake, migration safety, verification, review, release, and recovery.
 
 ## Engineering Objective
 
@@ -152,9 +158,9 @@ Do not silently convert units unless the conversion is explicitly defined and au
 
 ---
 
-## Current Technology
+## Target Technology
 
-The application uses:
+The planned application stack is:
 
 - Next.js
 - React
@@ -170,7 +176,9 @@ Application code must not duplicate authoritative business rules that belong in 
 
 ---
 
-## Repository Structure
+## Target Repository Structure
+
+The following layout describes the intended application structure. It is not a claim that these directories are present in the current checkout.
 
 ```
 app/

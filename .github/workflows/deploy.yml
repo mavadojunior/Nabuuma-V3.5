@@ -1,206 +1,74 @@
-name: Deploy
+name: Deployment Readiness
 
+# This repository does not yet contain a deployable application or a configured
+# hosting provider. Keep this workflow manual and build-only until both exist.
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
+
+permissions:
+  contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+  group: deployment-readiness-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build & Package
+  build-readiness:
+    name: Application build readiness (no deployment)
     runs-on: ubuntu-latest
-    outputs:
-      build-status: ${{ steps.build.outcome }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Build application
-        id: build
-        run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: .next
-          retention-days: 1
+    timeout-minutes: 15
 
-  pre-deploy-checks:
-    name: Pre-Deployment Checks
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - name: Install dependencies
+          node-version: '22'
+
+      - name: Require application source and verification scripts
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const scripts = pkg.scripts ?? {}
+          const missing = ['build', 'typecheck', 'lint', 'test']
+            .filter((name) => typeof scripts[name] !== 'string')
+          const hasLockfile = fs.existsSync('package-lock.json')
+          const hasApplicationSource = ['app', 'pages', 'src']
+            .some((path) => fs.existsSync(path) && fs.statSync(path).isDirectory())
+
+          if (!hasApplicationSource) {
+            console.error('BLOCKED: no app/, pages/, or src/ application directory exists.')
+          }
+          if (missing.length > 0) {
+            console.error('BLOCKED: missing package scripts: ' + missing.join(', '))
+          }
+          if (!hasLockfile) {
+            console.error('BLOCKED: package-lock.json is required for reproducible npm ci installs.')
+          }
+          if (!hasApplicationSource || !hasLockfile || missing.length > 0) {
+            process.exit(1)
+          }
+          NODE
+
+      - name: Install locked dependencies
         run: npm ci
-      
-      - name: Run TypeScript check
+
+      - name: TypeScript check
         run: npm run typecheck
-      
-      - name: Run lint
+
+      - name: Lint
         run: npm run lint
-      
-      - name: Run tests
-        run: npm run test || true
 
-  staging-deploy:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: [ build, pre-deploy-checks ]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: staging
-      url: ${{ steps.deploy.outputs.deployment_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: .next
-      
-      - name: Deploy to Staging
-        id: deploy
-        run: |
-          echo "Deploying to staging environment..."
-          # Add your staging deployment commands here
-          # Example: vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod=false
-          echo "deployment_url=https://staging.nabuuma.example.com" >> $GITHUB_OUTPUT
-        env:
-          DEPLOYMENT_KEY: ${{ secrets.STAGING_DEPLOYMENT_KEY }}
-      
-      - name: Verify Staging Deployment
-        run: |
-          echo "Verifying deployment..."
-          # Add health check commands here
-          curl -f ${{ steps.deploy.outputs.deployment_url }}/health || exit 1
+      - name: Test
+        run: npm run test
 
-  production-deploy:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [ build, pre-deploy-checks ]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: production
-      url: ${{ steps.deploy.outputs.deployment_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: .next
-      
-      - name: Create Production Release
-        id: release
-        run: |
-          VERSION=$(git describe --tags --always)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Creating release for version: $VERSION"
-      
-      - name: Deploy to Production
-        id: deploy
-        run: |
-          echo "Deploying to production environment..."
-          # Add your production deployment commands here
-          # Example: vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod
-          echo "deployment_url=https://nabuuma.example.com" >> $GITHUB_OUTPUT
-        env:
-          DEPLOYMENT_KEY: ${{ secrets.PRODUCTION_DEPLOYMENT_KEY }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      
-      - name: Run Production Health Checks
-        run: |
-          echo "Running production health checks..."
-          curl -f ${{ steps.deploy.outputs.deployment_url }}/health || exit 1
-          curl -f ${{ steps.deploy.outputs.deployment_url }}/api/health || exit 1
-      
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.release.outputs.version }}
-          release_name: Release ${{ steps.release.outputs.version }}
-          body: |
-            Production deployment successful.
-            - Deployment URL: ${{ steps.deploy.outputs.deployment_url }}
-            - Commit: ${{ github.sha }}
-          draft: false
-          prerelease: false
+      - name: Production build
+        run: npm run build
 
-  post-deploy:
-    name: Post-Deployment Actions
-    runs-on: ubuntu-latest
-    needs: [ production-deploy ]
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Notify Slack
-        uses: slackapi/slack-github-action@v1.24.0
-        if: always()
-        with:
-          payload: |
-            {
-              "text": "Nabuuma V3.5 Deployment ${{ needs.production-deploy.result == 'success' && '✅ SUCCESS' || '❌ FAILED' }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Deployment Status*: ${{ needs.production-deploy.result == 'success' && '✅ SUCCESS' || '❌ FAILED' }}\n*Commit*: ${{ github.sha }}\n*Branch*: ${{ github.ref }}"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        continue-on-error: true
-      
-      - name: Create deployment issue
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Deployment Failed: ${context.sha.substring(0, 7)}`,
-              body: `Production deployment failed for commit ${context.sha}\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['deployment', 'urgent']
-            })
+      - name: Report boundary
+        run: |
+          echo "Build readiness checks passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "No deployment was performed. A hosting provider and deployment adapter must be configured separately." >> "$GITHUB_STEP_SUMMARY"

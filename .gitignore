@@ -1,0 +1,14 @@
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.mcp.json
+supabase/.temp/
+supabase/.branches/
+*.log
+*.bak
+*.bak_*
