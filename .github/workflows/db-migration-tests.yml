@@ -226,9 +226,7 @@ jobs:
         run: bash scripts/check-migration-history.sh
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: 2.122.0
+        run: npm install --global supabase@2.122.0
 
       - name: Install PostgreSQL client
         run: |
