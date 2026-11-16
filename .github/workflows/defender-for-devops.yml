@@ -1,21 +1,5 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-#
-# Microsoft Security DevOps (MSDO) is a command line application which integrates static analysis tools into the development cycle.
-# MSDO installs, configures and runs the latest versions of static analysis tools
-# (including, but not limited to, SDL/security and compliance tools).
-#
-# The Microsoft Security DevOps action is currently in beta and runs on the windows-latest queue,
-# as well as Windows self hosted agents. ubuntu-latest support coming soon.
-#
-# For more information about the action , check out https://github.com/microsoft/security-devops-action
-#
-# Please note this workflow do not integrate your GitHub Org with Microsoft Defender For DevOps. You have to create an integration
-# and provide permission before this can report data back to azure.
-# Read the official documentation here : https://learn.microsoft.com/en-us/azure/defender-for-cloud/quickstart-onboard-github
-
+# Microsoft Security DevOps static analysis. All external actions are pinned
+# to immutable commits and explicitly allowlisted in repository settings.
 name: "Microsoft Defender For Devops"
 
 on:
@@ -26,24 +10,25 @@ on:
   schedule:
     - cron: '40 20 * * 6'
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   MSDO:
-    # currently only windows latest is supported
     runs-on: windows-latest
-
+    timeout-minutes: 45
     steps:
-    - uses: actions/checkout
-    - uses: actions/setup-dotnet
-    - uses: microsoft/security-devops-action
-    - uses: github/codeql-action/upload-sarif
-      with:
-        dotnet-version: |
-          5.0.x
-          6.0.x
-    - name: Run Microsoft Security DevOps
-      uses: microsoft/security-devops-action@v1.6.0
-      id: msdo
-    - name: Upload results to Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Run Microsoft Security DevOps
+        uses: microsoft/security-devops-action@08976cb623803b1b36d7112d4ff9f59eae704de0
+        id: msdo
+
+      - name: Upload results to Security tab
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9
+        with:
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
