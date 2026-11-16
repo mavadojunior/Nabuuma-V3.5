@@ -11,7 +11,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 
 CREATE TABLE public._nabuuma_deployment_bootstrap (id bigint);
 CREATE TABLE public.assessments (id bigint);
-CREATE TABLE public.acl_public_dml_probe (id bigint);
 CREATE TABLE public.audit_logs (id bigint);
 CREATE TABLE public.business_members (id bigint);
 CREATE TABLE public.businesses (id bigint);
@@ -164,8 +163,5 @@ CREATE TABLE public.waste_records (id bigint);
 CREATE VIEW public.view_v29_learning_control_tower AS SELECT id FROM public.assessments;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 
--- Model a PUBLIC DML grant without direct grants to API roles. The ACL
--- migration must remove the inherited privilege for all three API roles.
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.acl_public_dml_probe
-FROM anon, authenticated, service_role;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.acl_public_dml_probe TO PUBLIC;
+-- Shared fixture models inherited PUBLIC DML grants for the ACL migration.
+\ir public_dml_probe_setup.sql

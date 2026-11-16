@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
 
@@ -68,7 +68,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
 
@@ -155,7 +155,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
 
@@ -226,7 +226,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
 
@@ -254,9 +254,15 @@ jobs:
             -X -v ON_ERROR_STOP=1 \
             -f supabase/tests/schema_reconciliation_assertions.sql
 
-      - name: Verify production-only ACL drift is absent
+      - name: Seed inherited PUBLIC DML fixture and verify ACL drift is absent
         run: |
           set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -X -v ON_ERROR_STOP=1 \
+            -f supabase/tests/fixtures/public_dml_probe_setup.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -X -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20261114043100_restore_client_acl_boundaries.sql
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
             -X -v ON_ERROR_STOP=1 \
             -f supabase/tests/acl_reconciliation_assertions.sql
