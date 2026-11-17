@@ -73,7 +73,8 @@ Use one focused branch and one reviewable change set per engineering outcome. Ke
 4. Make DDL transactional where supported. Use bounded `lock_timeout` and `statement_timeout` for production-facing changes.
 5. Consider locks, table size, index build behavior, backfill duration, replication, dependencies, and deployment ordering.
 6. Review grants, RLS, policies, view `security_invoker`, function `SECURITY DEFINER`/`search_path`/EXECUTE ACLs, trigger attachments, and default privileges.
-7. Prefer expand → migrate/backfill → verify → contract for changes that cannot be deployed atomically with application code.
+7. New objects created by `postgres` receive no automatic API-role grants in `public`; grant only the required table, sequence, and function privileges explicitly. New functions created by `postgres` in any schema do not inherit `PUBLIC EXECUTE`. RLS helper functions must be executable by the role evaluating the policy; RPCs must be granted only to their intended callers. This rule does not alter existing object ACLs or defaults belonging to other owners.
+8. Prefer expand → migrate/backfill → verify → contract for changes that cannot be deployed atomically with application code.
 8. Test a clean full replay and an upgrade path seeded with the relevant production shape. Test idempotency only where the migration is intentionally written to support it.
 9. Check migration ledger state after deployment. Never assume a successful SQL response alone proves migration bookkeeping is correct.
 10. If rollback is unsafe or impossible, state that plainly and prepare a forward-fix/data-recovery plan.
@@ -201,4 +202,4 @@ Never collapse these states into a generic “complete.”
 
 ## 12. Current workspace boundary
 
-As of the current repository audit, this checkout contains database/security migrations, tests, documentation, and workflow files, but not the complete Next.js application. Do not run or report app build/typecheck/lint/test gates until the actual app and scripts exist. The `supabase_admin` default-privilege issue and unexecuted hosted full replay remain release blockers until separately resolved and verified.
+As of 2026-11-17, this checkout contains database/security migrations, tests, documentation, and workflow files, but not the complete Next.js application. Do not run or report app build/typecheck/lint/test gates until the actual app and scripts exist. The hosted full Supabase migration replay passed in GitHub Actions run [43985400113](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43985400113). The Supabase-managed `supabase_admin` defaults cannot be changed by the project migration role, but the read-only production audit found no `supabase_admin`-owned objects and no extensions in `public`; see `PRODUCTION_DEFAULT_PRIVILEGE_FOLLOWUP_2026-11-17.md`. No production migration has been applied.
