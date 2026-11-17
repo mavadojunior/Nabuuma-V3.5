@@ -320,9 +320,9 @@ BEGIN
 
         IF EXISTS (
             SELECT 1
-            FROM public.network_liquidity_reservations r
-            WHERE r.route_id = v_route.route_id
-              AND r.state <> 'consumed'
+            FROM public.network_liquidity_reservations reservation_row
+            WHERE reservation_row.route_id = v_route.route_id
+              AND reservation_row.state <> 'consumed'
         ) THEN
             RAISE EXCEPTION
                 'completed route has unconsumed liquidity reservations';
