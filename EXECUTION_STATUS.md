@@ -3,18 +3,18 @@
 **Repository:** `mavadojunior/Nabuuma-V3.5`
 **PR:** [#4 — feat: restore migration history and enforce release gates](https://github.com/mavadojunior/Nabuuma-V3.5/pull/4)
 **Branch:** `enforce/release-readiness-v1`
-**Reviewed head at update:** `4ba31f9c20b0ba386ac922c4536319586f71dd32`
+**Reviewed head at update:** `54ab865a579d7841d6c615457743b4956fe6a20b`
 **Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
 
 ## Current verified position
 
-- PR #4 is open, unmerged, and reported mergeable. The branch is 15 commits ahead of `main`, 0 behind at the time of this check.
-- Latest head CI passed: Database Migration Tests run [43996903591](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903591) (all four jobs) and Microsoft Defender run [43996903571](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903571).
-- The full Supabase migration replay, ACL regression checks, and settlement execution/rollback assertions passed.
+- PR #4 is open, unmerged, and reported mergeable. The branch is 17 commits ahead of `main`, 0 behind at the time of this check.
+- Latest head CI passed: Database Migration Tests run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) (all four jobs) and Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087).
+- The full Supabase migration replay, structural assertions, ACL regression checks, access-token hook contract, and settlement execution/rollback assertions passed on this head.
 - The production migration ledger contains 69 records and matches all 69 entries in the recovered migration manifest. No missing, mismatched, or extra records were found.
 - Four migrations remain pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
 - Production checks in this update were read-only. No production migration, schema, ACL, policy, or data changes were made.
-- CodeRabbit paused its review at `3fea9dbe`; its own PR comment identifies `4ba31f9c` as not reviewed. A fresh independent review of the latest commit is still required.
+- CodeRabbit's paused-review comment was followed by an explicit review command for head `54ab865a579d7841d6c615457743b4956fe6a20b`; the bot replied that the action finished. GitHub currently records no formal review submission or inline review thread, so independent approval remains outstanding.
 - Production deployment remains blocked pending independent review, backup/snapshot and fresh pre-deployment fingerprints, controlled one-at-a-time application, post-migration assertions, and explicit release authorization.
 - The `supabase_admin` default-privilege issue remains a platform-owned residual risk for future objects created by that role. The project migration role cannot change those managed defaults.
 
