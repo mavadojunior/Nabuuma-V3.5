@@ -1,16 +1,19 @@
 # Production migration deployment review
 
-**Review date:** 2026-11-14
+**Original review date:** 2026-11-14
+**Release-gate update:** 2026-11-17
 **Project:** `mzfkamgfvxypakfkjdfs`
 **Repository:** `mavadojunior/Nabuuma-V3.5`
-**Branch:** `fix/v3.15.6-rls-migration`
+**Reviewed branch:** `enforce/release-readiness-v1`
+**Reviewed commit:** `4ba31f9c20b0ba386ac922c4536319586f71dd32`
 
 ## Decision
 
-**Do not deploy yet.** Four pending migrations are ordered and have local validation. The platform-owned default ACL is the remaining known privilege-authority blocker; hosted full-replay CI is still an unverified release gate:
+**Do not deploy yet.** The migration chain and hosted CI are validated, but independent review of the latest commit, production operational checks, and an authorized release decision remain outstanding.
 
-1. The platform-owned `supabase_admin` default ACL cannot be changed by the production `postgres` migration role. This leaves a future-object privilege risk that requires an authorized Supabase-side decision.
-2. The large structural migration `20261114043000` now has a full Supabase-stack GitHub Actions replay job. The job is authored but has not yet run on GitHub; hosted success remains unverified. The ACL migration retains its separate PostgreSQL 17.6 fixture and idempotency test.
+1. The platform-owned `supabase_admin` default ACL cannot be changed by the production `postgres` migration role. Current public objects were audited; future objects created by `supabase_admin` remain a platform-owned privilege risk requiring a separate decision.
+2. The full Supabase-stack replay completed successfully on GitHub Actions run [43996903591](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903591). All four database jobs passed, including settlement execution and rollback. Microsoft Defender run [43996903571](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903571) also passed.
+3. PR #4 remains open and unmerged. CodeRabbit paused automatic review at `3fea9dbe`; the latest commit `4ba31f9c` was not covered by that review. A fresh review is required before merge.
 
 The two legacy SECURITY DEFINER trigger functions are now hardened by `20261114043200_harden_legacy_trigger_search_paths.sql`. Local assertions verified both retain SECURITY DEFINER and use `search_path=pg_catalog`.
 
@@ -68,7 +71,7 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 ## Residual risks
 
 - Production `supabase_admin` has public-schema defaults that grant API roles all eight table privileges, `SELECT`/`UPDATE`/`USAGE` on sequences, and `EXECUTE` on functions. Production `postgres` is neither a member of `supabase_admin` nor a superuser, so migration 431 cannot change those defaults. Current table/view ACLs are reconciled; future objects created by `supabase_admin` remain a platform-owned risk.
-- The two legacy SECURITY DEFINER trigger functions have been hardened by migration 432; the hosted full-replay CI job must verify this on a clean Supabase stack.
+- The two legacy SECURITY DEFINER trigger functions have been hardened by migration 432; the successful hosted full-replay run verified this on a clean Supabase stack.
 - All 12 production public views are security-invoker and report zero automatically updatable columns. Migration 430 gives `recipe_costs` `SELECT` only; migration 431 now applies `SELECT`-only grants to every public view for `anon`, `authenticated`, and `service_role`. The ACL assertion checks all seven non-SELECT privilege types across every public view.
 - CI has focused V3.15.7 and 431 jobs plus a new full Supabase-stack replay job covering the complete migration chain. The full replay job is authored but not yet executed on GitHub.
 
@@ -86,7 +89,7 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - 69 recovered production migrations replayed on disposable PostgreSQL 17.11; the optional `pg_cron` extension creation was omitted only in the local harness because the package is unavailable. No recovered migration references cron objects.
 - Updated 430 applied to a replay clone carrying the production recipe FK state; the corrected FK and structural assertions passed.
 - Updated 431 applied to the reconstructed full-schema database; 704 relation ACL rows were present and the all-view ACL assertions passed.
-- The PostgreSQL 17.6 ACL fixture and idempotency run passed locally; the full-schema test also verified all 12 public views have `SELECT` only for API roles. Migration 432 and structural assertions passed on the reconstructed full-schema database; the ACL assertions also passed there. The new hosted full-replay workflow has not yet run.
+- The PostgreSQL 17.6 ACL fixture and idempotency run passed locally; the full-schema test also verified all 12 public views have `SELECT` only for API roles. Migration 432 and structural assertions passed on the reconstructed full-schema database; the ACL assertions also passed there. Hosted full-replay run 43996903591 passed.
 - Full Supabase Docker reset was not run because Docker is unavailable in the UserLAnd environment. The replay used minimal Auth stubs.
 
 ## Commit preparation
