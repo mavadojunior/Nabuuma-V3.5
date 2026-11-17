@@ -1,6 +1,40 @@
+# Current Release Gate — 2026-11-17
+
+**Repository:** `mavadojunior/Nabuuma-V3.5`
+**PR:** [#4 — feat: restore migration history and enforce release gates](https://github.com/mavadojunior/Nabuuma-V3.5/pull/4)
+**Branch:** `enforce/release-readiness-v1`
+**Reviewed head at update:** `4ba31f9c20b0ba386ac922c4536319586f71dd32`
+**Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
+
+## Current verified position
+
+- PR #4 is open, unmerged, and reported mergeable. The branch is 15 commits ahead of `main`, 0 behind at the time of this check.
+- Latest head CI passed: Database Migration Tests run [43996903591](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903591) (all four jobs) and Microsoft Defender run [43996903571](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903571).
+- The full Supabase migration replay, ACL regression checks, and settlement execution/rollback assertions passed.
+- The production migration ledger contains 69 records and matches all 69 entries in the recovered migration manifest. No missing, mismatched, or extra records were found.
+- Four migrations remain pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
+- Production checks in this update were read-only. No production migration, schema, ACL, policy, or data changes were made.
+- CodeRabbit paused its review at `3fea9dbe`; its own PR comment identifies `4ba31f9c` as not reviewed. A fresh independent review of the latest commit is still required.
+- Production deployment remains blocked pending independent review, backup/snapshot and fresh pre-deployment fingerprints, controlled one-at-a-time application, post-migration assertions, and explicit release authorization.
+- The `supabase_admin` default-privilege issue remains a platform-owned residual risk for future objects created by that role. The project migration role cannot change those managed defaults.
+
+## Outstanding release actions
+
+1. Obtain a fresh review covering the latest PR head, including all four pending migrations and the CI workflow changes.
+2. Resolve review findings and rerun CI if any code changes are made.
+3. Confirm backup/snapshot availability and capture fresh production schema, ACL, and migration-ledger evidence immediately before any deployment.
+4. Apply migrations only after explicit authorization, one at a time, in timestamp order; verify catalog and ACL assertions after each commit.
+5. Treat committed migrations as forward-only; prepare compensating migrations rather than relying on rollback SQL.
+
+**Release status:** CI validation green; independent review pending; production deployment not authorized.
+
+---
+
 # Nabuuma V3.5 Execution Status
 
-**Last Updated:** 2026-11-14
+**Historical snapshot date:** 2026-11-14
+
+> The sections below preserve the engineering status recorded on 2026-11-14. Where they describe CI as pending, the branch position as behind, or hosted replay as unverified, those statements are historical. Use the current release gate above for the latest verified status.
 **Repository:** mavadojunior/Nabuuma-V3.5
 **Production Instance:** mzfkamgfvxypakfkjdfs (PostgreSQL 17.6)
 
