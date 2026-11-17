@@ -456,7 +456,8 @@ $default_acl_runtime_assertions$;
 -- the required path for future RPCs and policy helper functions.
 DO $existing_policy_helper_assertion$
 BEGIN
-  IF NOT has_function_privilege('authenticated', 'public.is_member(uuid)', 'EXECUTE') THEN
+  IF to_regprocedure('public.is_member(uuid)') IS NOT NULL
+     AND NOT has_function_privilege('authenticated', 'public.is_member(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Existing RLS helper is_member(uuid) lost authenticated EXECUTE';
   END IF;
 END
