@@ -254,6 +254,13 @@ jobs:
             -X -v ON_ERROR_STOP=1 \
             -f supabase/tests/schema_reconciliation_assertions.sql
 
+      - name: Verify access-token hook runtime contract
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -X -v ON_ERROR_STOP=1 \
+            -f supabase/tests/custom_access_token_hook_assertions.sql
+
       - name: Seed inherited PUBLIC DML fixture and verify ACL drift is absent
         run: |
           set -euo pipefail
