@@ -246,7 +246,7 @@ BEGIN
             'a7bce5e8-9bca-4dd9-bdb8-000000000001',
             'a7bce5e8-9bca-4dd9-bdb8-000000000050',
             10000,
-            1
+            1::smallint
         );
         v_route_id := public.network_compile_settlement_route(v_batch_id);
         PERFORM public.network_authorize_settlement_route(v_route_id);
