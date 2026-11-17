@@ -140,18 +140,21 @@ BEGIN
   v_entity_type := TG_TABLE_NAME;
   v_metadata := jsonb_build_object('old', v_old, 'new', v_new);
 
-  IF TG_TABLE_NAME = 'purchase_orders'
-     AND TG_OP = 'UPDATE'
-     AND OLD.status IS DISTINCT FROM NEW.status THEN
-    v_action := 'purchase_order_status_changed';
-    v_entity_type := 'purchase_order';
-    v_metadata := jsonb_build_object(
-      'old_status', OLD.status::text,
-      'new_status', NEW.status::text,
-      'order_number', NEW.order_number,
-      'old', v_old,
-      'new', v_new
-    );
+  -- Keep table-specific OLD/NEW field access inside a nested branch.
+  -- SQL boolean expressions may reorder AND operands, so a flat guard can
+  -- evaluate OLD.status for other tables that do not have that column.
+  IF TG_TABLE_NAME = 'purchase_orders' AND TG_OP = 'UPDATE' THEN
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+      v_action := 'purchase_order_status_changed';
+      v_entity_type := 'purchase_order';
+      v_metadata := jsonb_build_object(
+        'old_status', OLD.status::text,
+        'new_status', NEW.status::text,
+        'order_number', NEW.order_number,
+        'old', v_old,
+        'new', v_new
+      );
+    END IF;
   END IF;
 
   INSERT INTO public.audit_logs (
