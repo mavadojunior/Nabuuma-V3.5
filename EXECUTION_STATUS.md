@@ -9,7 +9,7 @@
 ## Current verified position
 
 - PR #4 is open, unmerged, and reported mergeable. The branch has no commits behind `main`; its current ahead count is available from the GitHub compare view.
-- Latest head CI passed: Database Migration Tests run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) (all four jobs) and Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087).
+- Latest code-bearing head CI passed: Database Migration Tests run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) (all four jobs) and Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087).
 - The full Supabase migration replay, structural assertions, ACL regression checks, access-token hook contract, and settlement execution/rollback assertions passed on this head.
 - The production migration ledger contains 69 records and matches all 69 entries in the recovered migration manifest. No missing, mismatched, or extra records were found.
 - Four migrations remain pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
