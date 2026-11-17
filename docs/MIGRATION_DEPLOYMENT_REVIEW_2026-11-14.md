@@ -2,18 +2,19 @@
 
 **Original review date:** 2026-11-14
 **Release-gate update:** 2026-11-17
+**Current branch head at update:** `54ab865a579d7841d6c615457743b4956fe6a20b`
 **Project:** `mzfkamgfvxypakfkjdfs`
 **Repository:** `mavadojunior/Nabuuma-V3.5`
 **Reviewed branch:** `enforce/release-readiness-v1`
-**Reviewed commit:** `4ba31f9c20b0ba386ac922c4536319586f71dd32`
+**Reviewed commit:** `54ab865a579d7841d6c615457743b4956fe6a20b`
 
 ## Decision
 
 **Do not deploy yet.** The migration chain and hosted CI are validated, but independent review of the latest commit, production operational checks, and an authorized release decision remain outstanding.
 
 1. The platform-owned `supabase_admin` default ACL cannot be changed by the production `postgres` migration role. Current public objects were audited; future objects created by `supabase_admin` remain a platform-owned privilege risk requiring a separate decision.
-2. The full Supabase-stack replay completed successfully on GitHub Actions run [43996903591](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903591). All four database jobs passed, including settlement execution and rollback. Microsoft Defender run [43996903571](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/43996903571) also passed.
-3. PR #4 remains open and unmerged. CodeRabbit paused automatic review at `3fea9dbe`; the latest commit `4ba31f9c` was not covered by that review. A fresh review is required before merge.
+2. The latest full Supabase-stack replay completed successfully on GitHub Actions run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102). All four database jobs passed, including settlement execution and rollback. Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087) also passed.
+3. PR #4 remains open and unmerged. CodeRabbit's paused-review comment was followed by an explicit review command for the current head; the bot replied that the action finished. However, GitHub currently records no formal review submission or inline review thread. Independent approval therefore remains outstanding.
 
 The two legacy SECURITY DEFINER trigger functions are now hardened by `20261114043200_harden_legacy_trigger_search_paths.sql`. Local assertions verified both retain SECURITY DEFINER and use `search_path=pg_catalog`.
 
@@ -73,7 +74,7 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Production `supabase_admin` has public-schema defaults that grant API roles all eight table privileges, `SELECT`/`UPDATE`/`USAGE` on sequences, and `EXECUTE` on functions. Production `postgres` is neither a member of `supabase_admin` nor a superuser, so migration 431 cannot change those defaults. Current table/view ACLs are reconciled; future objects created by `supabase_admin` remain a platform-owned risk.
 - The two legacy SECURITY DEFINER trigger functions have been hardened by migration 432; the successful hosted full-replay run verified this on a clean Supabase stack.
 - All 12 production public views are security-invoker and report zero automatically updatable columns. Migration 430 gives `recipe_costs` `SELECT` only; migration 431 now applies `SELECT`-only grants to every public view for `anon`, `authenticated`, and `service_role`. The ACL assertion checks all seven non-SELECT privilege types across every public view.
-- CI has focused V3.15.7 and 431 jobs plus a new full Supabase-stack replay job covering the complete migration chain. The full replay job is authored but not yet executed on GitHub.
+- CI has focused V3.15.7 and 431 jobs plus a full Supabase-stack replay covering the complete migration chain. The latest hosted run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) passed all four database jobs, including the complete replay, structural assertions, access-token hook contract, settlement execution/rollback, inherited PUBLIC DML fixture, and view-ACL idempotency.
 
 ## Rollback and operational risk
 
@@ -92,13 +93,6 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - The PostgreSQL 17.6 ACL fixture and idempotency run passed locally; the full-schema test also verified all 12 public views have `SELECT` only for API roles. Migration 432 and structural assertions passed on the reconstructed full-schema database; the ACL assertions also passed there. Hosted full-replay run 43996903591 passed.
 - Full Supabase Docker reset was not run because Docker is unavailable in the UserLAnd environment. The replay used minimal Auth stubs.
 
-## Commit preparation
+## Historical commit-preparation note — 2026-11-14
 
-The working tree contains the recovered 69-migration history, manifest, archive move, scripts/configuration, workflow changes, documentation, and pending migrations. It also contains an already-staged `package.json` change that is unrelated to the database milestone.
-
-Do not combine these into one opaque commit. Recommended split:
-
-1. **Recovery baseline:** 69 recovered migrations, recovery manifest, integrity-check script, Supabase config, archive move and associated provenance documentation.
-2. **Schema/security milestone:** V3.15.7, structural reconciliation, ACL reconciliation, ACL fixture/assertions, workflow job and review reports.
-
-No commit or push has been made. The unrelated staged `package.json` entry remains separate from the database milestone.
+The following note describes the earlier recovery checkout and is not a statement about the current branch working tree. The recovery baseline and schema/security work have since been committed to the PR branch.
