@@ -406,3 +406,73 @@ BEGIN
   END LOOP;
 END
 $public_dml_assertions$;
+
+
+-- Exercise actual defaults by creating disposable objects as the migration
+-- owner. Existing function ACLs are intentionally outside this test's scope.
+DROP TABLE IF EXISTS public.__acl_default_table_probe;
+DROP SEQUENCE IF EXISTS public.__acl_default_sequence_probe;
+DROP FUNCTION IF EXISTS public.__acl_default_function_probe();
+CREATE TABLE public.__acl_default_table_probe (id bigint);
+CREATE SEQUENCE public.__acl_default_sequence_probe;
+CREATE FUNCTION public.__acl_default_function_probe() RETURNS integer
+LANGUAGE sql AS $$ SELECT 1 $$;
+
+DO $default_acl_runtime_assertions$
+DECLARE
+  role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF has_table_privilege(role_name, 'public.__acl_default_table_probe', 'SELECT')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'INSERT')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'UPDATE')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'DELETE')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'TRUNCATE')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'REFERENCES')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'TRIGGER')
+       OR has_table_privilege(role_name, 'public.__acl_default_table_probe', 'MAINTAIN')
+       OR has_sequence_privilege(role_name, 'public.__acl_default_sequence_probe', 'USAGE')
+       OR has_sequence_privilege(role_name, 'public.__acl_default_sequence_probe', 'SELECT')
+       OR has_sequence_privilege(role_name, 'public.__acl_default_sequence_probe', 'UPDATE')
+       OR has_function_privilege(role_name, 'public.__acl_default_function_probe()', 'EXECUTE') THEN
+      RAISE EXCEPTION 'New public objects inherited an API-role grant for %', role_name;
+    END IF;
+  END LOOP;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    WHERE p.oid = 'public.__acl_default_function_probe()'::regprocedure
+      AND a.grantee = 0
+      AND a.privilege_type = 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'New postgres function inherited PUBLIC EXECUTE';
+  END IF;
+END
+$default_acl_runtime_assertions$;
+
+-- The existing policy helper grant remains intact, and explicit grants remain
+-- the required path for future RPCs and policy helper functions.
+DO $existing_policy_helper_assertion$
+BEGIN
+  IF NOT has_function_privilege('authenticated', 'public.is_member(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Existing RLS helper is_member(uuid) lost authenticated EXECUTE';
+  END IF;
+END
+$existing_policy_helper_assertion$;
+
+GRANT EXECUTE ON FUNCTION public.__acl_default_function_probe() TO authenticated, service_role;
+DO $explicit_default_grant_assertion$
+BEGIN
+  IF NOT has_function_privilege('service_role', 'public.__acl_default_function_probe()', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.__acl_default_function_probe()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.__acl_default_function_probe()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Explicit API-role function grants did not preserve the intended boundary';
+  END IF;
+END
+$explicit_default_grant_assertion$;
+
+DROP FUNCTION public.__acl_default_function_probe();
+DROP SEQUENCE public.__acl_default_sequence_probe;
+DROP TABLE public.__acl_default_table_probe;

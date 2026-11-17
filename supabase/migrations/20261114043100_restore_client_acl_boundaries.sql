@@ -72,6 +72,24 @@ $client_view_acl$;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM PUBLIC, anon, authenticated;
 
+-- Future application objects are private by default. Existing objects retain
+-- their current grants; migrations must explicitly grant only the access they
+-- require. Keep these defaults scoped to the postgres migration owner.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+REVOKE ALL ON TABLES FROM anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+REVOKE ALL ON SEQUENCES FROM anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+REVOKE ALL ON FUNCTIONS FROM anon, authenticated, service_role;
+
+-- PostgreSQL grants EXECUTE to PUBLIC by default for every new function.
+-- This global default revoke is required: a schema-specific revoke cannot
+-- cancel the global PUBLIC default. It applies to every schema for functions
+-- created by postgres. Future RPCs and RLS helper functions need explicit
+-- EXECUTE grants to their intended callers. Existing function ACLs are unchanged.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres
+REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
 -- Service-only control-plane tables. These ACLs are already specified by
 -- 20260917070958; reassert them because production currently has client grants.
 DO $service_only$
@@ -262,6 +280,21 @@ BEGIN
           AND a.privilege_type IN ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN')
     ) THEN
         RAISE EXCEPTION 'Unsafe non-DML client privileges remain in postgres public default ACLs';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_default_acl AS d
+        CROSS JOIN LATERAL pg_catalog.aclexplode(d.defaclacl) AS a
+        WHERE d.defaclrole = 'postgres'::regrole
+          AND (
+            (d.defaclnamespace = 'public'::regnamespace
+             AND d.defaclobjtype IN ('r', 'S', 'f')
+             AND a.grantee IN ('anon'::regrole, 'authenticated'::regrole, 'service_role'::regrole))
+            OR (d.defaclobjtype = 'f' AND d.defaclnamespace = 0 AND a.grantee = 0)
+          )
+    ) THEN
+        RAISE EXCEPTION 'API-role or PUBLIC execution grants remain in postgres defaults';
     END IF;
 END;
 $verify_client_acl$;
