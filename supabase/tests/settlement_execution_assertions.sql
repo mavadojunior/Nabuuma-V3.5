@@ -146,6 +146,11 @@ DO $settlement_assertions$
 DECLARE
     v_error text;
     v_route_id uuid;
+    v_invoice_id uuid;
+    v_batch_id uuid;
+    v_gate_id uuid;
+    v_source_id uuid;
+    v_ledger_count bigint;
 BEGIN
     -- Insufficient liquidity must leave no partially compiled route behind.
     BEGIN
@@ -228,15 +233,7 @@ BEGIN
 
     -- Execute a genuine invoice through route reservation, finality, ledger
     -- posting, liquidity consumption and final route completion.
-    v_error := NULL;
     v_route_id := NULL;
-    DECLARE
-        v_invoice_id uuid;
-        v_batch_id uuid;
-        v_gate_id uuid;
-        v_source_id uuid;
-        v_ledger_count bigint;
-    BEGIN
         v_invoice_id := public.v32_three_way_match(
             'a7bce5e8-9bca-4dd9-bdb8-000000000044',
             'a7bce5e8-9bca-4dd9-bdb8-000000000048',
@@ -289,10 +286,9 @@ BEGIN
 
         SELECT count(*) INTO v_ledger_count FROM public.financial_ledger_entries;
         PERFORM public.network_execute_settlement_route(v_route_id);
-        IF (SELECT count(*) FROM public.financial_ledger_entries) <> v_ledger_count THEN
-            RAISE EXCEPTION 'idempotent retry posted duplicate ledger entries';
-        END IF;
-    END;
+    IF (SELECT count(*) FROM public.financial_ledger_entries) <> v_ledger_count THEN
+        RAISE EXCEPTION 'idempotent retry posted duplicate ledger entries';
+    END IF;
 END
 $settlement_assertions$;
 
