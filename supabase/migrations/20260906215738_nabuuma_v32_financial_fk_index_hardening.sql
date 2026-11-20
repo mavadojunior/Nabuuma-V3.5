@@ -1,0 +1,7 @@
+CREATE INDEX IF NOT EXISTS financial_ledger_entries_account_idx ON public.financial_ledger_entries(account_id);
+CREATE INDEX IF NOT EXISTS network_invoice_lines_ingredient_idx ON public.network_invoice_lines(ingredient_id);
+CREATE INDEX IF NOT EXISTS settlement_batches_seller_idx ON public.settlement_batches(seller_business_id);
+CREATE INDEX IF NOT EXISTS escrow_controls_seller_idx ON public.multi_tenant_escrow_controls(seller_business_id);
+CREATE INDEX IF NOT EXISTS dispatch_financial_clearance_buyer_idx ON public.network_dispatch_financial_clearances(buyer_business_id);
+CREATE INDEX IF NOT EXISTS dispatch_financial_clearance_seller_idx ON public.network_dispatch_financial_clearances(seller_business_id);
+CREATE INDEX IF NOT EXISTS network_dispatch_financial_clearances_settlement_idx ON public.network_dispatch_financial_clearances(settlement_batch_id);

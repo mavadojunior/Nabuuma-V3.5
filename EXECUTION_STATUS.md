@@ -1,8 +1,86 @@
+# Current Release Gate — 2026-11-20
+
+**Repository:** `mavadojunior/Nabuuma-V3.5`
+**PR:** [#4 — feat: restore migration history and enforce release gates](https://github.com/mavadojunior/Nabuuma-V3.5/pull/4)
+**Branch:** `enforce/release-readiness-v1`
+**Latest verified code/test head:** `91b0818e3a43f860317e962a4d951069828316f6`
+**Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
+**CI-verified PR head recorded in this update:** `9ea44fe675a2b6d1fff04afbaa8924efefd7f2c8` (documentation-only refresh)
+**Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
+
+## Current verified position
+
+- PR #4 is open, unmerged, and reported mergeable. No reviewer is requested and no formal review is recorded.
+- Database Migration Tests run [44677735534](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677735534) passed all four jobs on documentation-only PR head `9ea44fe`, following verified code/test head `91b0818`. Microsoft Defender run [44677735416](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677735416) also passed on that PR head.
+- The full Supabase local-stack replay passed, including every recovered and pending migration, structural/security assertions, recipe publication tests, access-token hook tests, settlement execution/rollback, concurrent business onboarding, ACL regression fixtures, and view-ACL idempotency.
+- New onboarding coverage verifies that simultaneous first-time `create_business()` calls resolve to one business, one membership, and one subscription.
+- New recipe tests cover trusted service-role publication, user-membership authorization, replacement/archival, direct-publication denial, published-version immutability, cross-business references, and active-pointer integrity.
+- Read-only production checks found zero active recipe pointers, zero cross-business recipe/product references, and zero products with multiple published recipe versions. These results satisfy the new migration preconditions.
+- The production migration ledger contains 69 records and matches all 69 entries in the recovered migration manifest. No missing, mismatched, or extra records were found.
+- Four migrations remain pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
+- Production checks were read-only. No production migration, schema, ACL, policy, or data changes were made.
+- CodeRabbit's check is skipped and the bot stated that manual review is required for this OSS repository. The only listed repository collaborator is the repository owner; no independent reviewer is assigned. GitHub has no formal review submission or inline review thread.
+- The `supabase_admin` default-privilege issue remains a platform-owned residual risk for future objects created by that role. The project migration role cannot change those managed defaults.
+
+## Additional implementation in this continuation
+
+- `create_business()` now takes a per-user transaction advisory lock before checking existing membership, preventing concurrent first-time requests from creating multiple businesses.
+- The recipe publication path keeps the production service-role-only EXECUTE boundary. It serializes publication by locking the product, verifies the recipe/product/business relationship, and uses a controlled transaction-local authorization marker for publication state transitions.
+- The recipe immutability trigger now blocks direct published inserts, updates, deletes, and unauthorized status changes. It permits only the controlled publication/archival path and returns `OLD` for allowed draft/archived deletes.
+- Tenant-integrity SECURITY DEFINER trigger functions now use `search_path=pg_catalog` and are not directly executable by API roles.
+- A product active-recipe guard rejects pointers to drafts, other products, or other businesses. Migration preconditions stop if existing pointers, recipe ownership, or published-version cardinality are inconsistent.
+
+## Outstanding release actions
+
+1. Obtain an independent human review of the current PR head and all four pending migrations.
+2. Resolve review findings and rerun CI if any code changes are made.
+3. Confirm backup/snapshot availability and capture fresh production schema, ACL, and migration-ledger evidence immediately before any deployment.
+4. Apply migrations only after explicit authorization, one at a time, in timestamp order; verify catalog and ACL assertions after each commit.
+5. Treat committed migrations as forward-only; prepare compensating migrations rather than relying on rollback SQL.
+
+**Release status:** Latest code/test head and subsequent documentation-only refresh passed hosted CI; independent review pending; production deployment not authorized.
+
+---
+
 # Nabuuma V3.5 Execution Status
 
-**Last Updated:** 2026-09-16
+**Historical snapshot date:** 2026-11-14
+
+> The sections below preserve the engineering status recorded on 2026-11-14. Where they describe CI as pending, the branch position as behind, or hosted replay as unverified, those statements are historical. Use the current release gate above for the latest verified status.
 **Repository:** mavadojunior/Nabuuma-V3.5
 **Production Instance:** mzfkamgfvxypakfkjdfs (PostgreSQL 17.6)
+
+## Latest Repository Review — 2026-11-14
+
+This is a local engineering update, not a production deployment.
+
+- Reconstructed all 69 production-applied migration SQL statements from `supabase_migrations.schema_migrations.statements[1]`.
+- `supabase migration list --linked`: 69 production migrations matched, zero remote-only; the current working tree has four pending local-only migrations (`20261019000000`, `20261114043000`, `20261114043100`, `20261114043200`).
+- Archived the un-applied `20260916023400` draft because the production-applied `20260921041538` migration supersedes it.
+- Added a SHA-256/size manifest and `scripts/check-migration-history.sh`; the integrity gate passes.
+- The V3.15.7 `audit_logs` migration and focused PostgreSQL 17.11 regression tests pass locally. The GitHub workflow is configured for PostgreSQL 17.6; hosted CI has not run.
+- Full `supabase db reset` remains unverified because Docker is unavailable in this UserLAnd environment.
+- Production `public.audit_logs` still has broad client grants. V3.15.7 narrows client ACLs and keeps RLS enabled but not forced so trusted SECURITY DEFINER audit triggers continue to work; it is pending and not deployed.
+- The branch is four commits behind `origin/main`. No rebase or push was performed.
+- The checkout has no application source directories or package build/typecheck/lint scripts. The deployment workflow is manual build-readiness only and does not deploy.
+
+See `docs/REPOSITORY_AUDIT_2026-11-14.md` and `docs/MIGRATION_HISTORY_RECONCILIATION_2026-11-14.md` for the evidence, recovered migration manifest, and remaining blockers.
+
+
+## Follow-up Engineering Update — 2026-11-14
+
+- Added migration `20261114043200_harden_legacy_trigger_search_paths.sql`. It sets `v21_audit_allocation_insert()` and `v22_audit_milestone()` to `search_path=pg_catalog` without changing their bodies, ownership, grants, or triggers.
+- Added `supabase/tests/schema_reconciliation_assertions.sql` to verify the recipe FK correction, retained financial balance trigger, and both hardened SECURITY DEFINER function settings.
+- Added a `full-schema-replay` GitHub Actions job using the Supabase CLI and PostgreSQL 17 local stack. It runs the complete migration chain, then structural and ACL assertions. The hosted job has not run yet.
+- Local verification passed: migration 432 and structural assertions on the reconstructed full-schema database; the explicit ACL drift assertions and generic all-view ACL assertions also passed on that database.
+- Four migrations are pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
+- Production catalog review found all 12 public views carry excessive API-role grants. All are `security_invoker` and report zero automatically updatable columns. Migration 431 now preserves `SELECT` and revokes every other API-role privilege from all public views; the ACL assertion checks every view and API role.
+- The ACL comparison now covers 364 relation/role rows and 1,652 excess privilege bits (162 `anon`, 162 `authenticated`, 40 `service_role`), including 35 additional view-role rows beyond the earlier 329-row comparison. The updated CSV records the revised intended `SELECT`-only view grants.
+- Local full-schema verification passed: 12 public views, zero missing API `SELECT` grants, zero views with API DML grants; the complete ACL assertion suite also passed.
+- Added repository-wide `AGENTS.md`, `docs/ENGINEERING_WORKFLOW.md`, a pull-request template, and `scripts/engineering-preflight.sh`. The workflow defines risk classes, migration discipline, a six-level verification ladder, review/CI/release gates, post-deployment checks, and incident recovery.
+- Added a repository preflight GitHub Actions job and expanded the full-schema job to reapply migration 431 and rerun ACL assertions across the full schema. Hosted CI has not run; local YAML parsing was unavailable in this environment.
+- `bash scripts/engineering-preflight.sh` passed locally. It verifies the 69-file production migration manifest and both staged/unstaged diff whitespace; it does not replace PostgreSQL, hosted CI, staging, or production tests.
+- Production confirms `postgres` is neither a member of `supabase_admin` nor a superuser. The platform-owned `supabase_admin` defaults grant API roles all table privileges, sequence SELECT/UPDATE/USAGE, and function EXECUTE on future public objects. Migration 431 cannot alter those defaults; an authorized Supabase-side fix remains mandatory. No production changes, commits, or pushes were made.
 
 ## Implementation Status Matrix
 
@@ -20,9 +98,9 @@
 | **Security Layer** | | | | |
 | Tenant Authorization | V3.13 | ✓ Hardened | business_members enforcement, RLS | Cross-tenant isolation verified |
 | API Security | V3.14 | ✓ Hardened | SECURITY INVOKER conversion, search_path | 36 → 21 → 0 authenticated SECURITY DEFINER |
-| Function Authorization | V3.15 | 🔧 In Progress | 0 public SECURITY DEFINER exposure | V3.15.2/3 complete; V3.15.6 RLS policies staged |
+| Function Authorization | V3.15 | 🔧 In Progress | 69 production migrations recovered; V3.15.7 audit_logs regression passed locally | Production audit_logs grants remain broad; V3.15.7 is pending |
 | **Application Layer** | | | | |
-| Authentication Boundary | – | 🔧 In Progress | Supabase SSR auth | middleware.ts present |
+| Authentication Boundary | – | 📋 Planned | Architecture documented | middleware.ts and application source are absent from this checkout |
 | Authorization Services | – | 📋 Planned | Service layer skeleton | lib/authorization/ not yet implemented |
 | Inventory Services | – | 📋 Planned | | |
 | Procurement Services | – | 📋 Planned | | |
@@ -30,9 +108,9 @@
 | Fiscal Services | – | 📋 Planned | | |
 | Customs Services | – | 📋 Planned | | |
 | **CI/CD & Verification** | | | | |
-| Migration Tests | – | ✓ Implemented | db-migration-tests.yml | PostgreSQL 17.6, enforcement-grade |
-| Security Tests | – | ✓ Implemented | security-audit.sql | pgTAP: SECURITY DEFINER audit |
-| RLS Verification | – | 🔧 In Progress | pgTAP framework | Tests staged in enforce/db-migration-tests-v2 |
+| Migration Tests | – | 🔧 In Progress | PostgreSQL 17.11 fixture and migration-history hash gate passed | PG17.6 GitHub workflow updated locally; hosted run pending |
+| Security Tests | – | 🔧 In Progress | supabase/tests/v3_15_7_audit_logs_assertions.sql | Executable SQL assertions; no active pgTAP suite recovered |
+| RLS Verification | – | 🔧 In Progress | Local PG17.11 fixture and production catalog inspection | Production ACL remediation remains pending |
 | Build Pipeline | – | 📋 Planned | | |
 | TypeScript Verification | – | 📋 Planned | | |
 | Type Generation | – | 📋 Planned | supabase types generation | |
@@ -46,7 +124,7 @@
 
 ## Current Verification Status
 
-### Production Database (mzfkamgfvxypakfkjdfs)
+### Production Database (mzfkamgfvxypakfkjdfs) — Historical snapshot
 
 | Check | Status | Details |
 |-------|--------|---------|
@@ -63,15 +141,15 @@
 | Check | Status | Details |
 |-------|--------|---------|
 | README.md | ✓ Complete | Architecture, principles, engineering rules |
-| Migrations directory | ⚠ Needs verification | V3.5 migration structure TBD |
-| pgTAP tests | 🔧 In progress | security-audit.sql created; v3.15.6 RLS tests staged |
+| Migrations directory | ✓ Recovered | 69 production SQL statements + one pending V3.15.7 migration |
+| SQL regression tests | 🔧 In progress | V3.15.7 audit_logs assertions; PG17.11 pass |
 | Architecture documentation | 🔧 In progress | Staged in enforce branches; needs merge |
 | Security documentation | 📋 Planned | SECURITY.md to be created |
-| CI/CD workflows | ✓ Implemented | db-migration-tests.yml enforcement-grade |
+| CI/CD workflows | 🔧 In progress | Migration integrity gate + PG17.6 test workflow; deployment is manual build-only |
 | Environment template | 📋 Planned | .env.example to be created |
 | Type definitions | 📋 Planned | types/database.ts generation |
 
-## Branches
+## Branches — Historical Snapshot
 
 | Branch | Status | Purpose |
 |--------|--------|---------|
@@ -79,7 +157,9 @@
 | `enforce/db-migration-tests-v2` | 🔧 Ready for merge | Enforcement-grade workflows + security audit docs + pgTAP tests |
 | `enforce/v3.15.6-rls-rejection-policies` | 🔧 Ready for merge | V3.15.6 migration + RLS rejection policies |
 
-## Next Actions (Priority Order)
+## Next Actions — Historical 2026-09-16 Snapshot
+
+The following list predates the 2026-11-14 repository review above. Use the latest review and audit document for current deployment blockers.
 
 ### Immediate (Next Session)
 
@@ -173,7 +253,7 @@ A README claim does not constitute implementation.
 - **CI/CD:** `.github/workflows/db-migration-tests.yml` (enforcement-grade)
 - **Security Audit:** `docs/security-hardening-v3.15.md` (audit trail)
 - **pgTAP Tests:** `supabase/tests/security-audit.sql` (authorization verification)
-- **Migration:** `supabase/migrations/20260916023400_v3_15_6_rls_rejection_policies.sql` (staged)
+- **Archived migration:** `supabase/archive/20260916023400_v3_15_6_rls_rejection_policies.sql` — preserved byte-for-byte for provenance; absent from the production migration ledger and excluded from active migration replay. Superseded by production-applied migration `20260921041538`.
 
 ---
 

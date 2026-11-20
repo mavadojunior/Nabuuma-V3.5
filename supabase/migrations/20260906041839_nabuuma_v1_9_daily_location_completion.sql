@@ -1,0 +1,1 @@
+alter table public.ingredient_daily_consumption add column if not exists location_id uuid references public.locations(id); create index if not exists idx_v19_daily_location on public.ingredient_daily_consumption(business_id,location_id,ingredient_id,unit,demand_date desc);
