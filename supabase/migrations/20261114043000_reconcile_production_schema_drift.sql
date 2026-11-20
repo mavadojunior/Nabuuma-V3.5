@@ -1350,6 +1350,16 @@ BEGIN
     RAISE EXCEPTION 'Invalid timezone' USING ERRCODE = '22023';
   END IF;
 
+  -- Serialize first-time onboarding for this Auth subject. The membership
+  -- constraint is scoped to (business_id, user_id), so concurrent requests
+  -- otherwise can both pass the existence check and create separate businesses.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'nabuuma:create_business:' || v_user_id::text,
+      0
+    )
+  );
+
   -- Preserve the existing one-business onboarding behavior.
   IF EXISTS (
     SELECT 1
