@@ -1,22 +1,25 @@
 # Production migration deployment review
 
 **Original review date:** 2026-11-14
-**Release-gate update:** 2026-11-17
-**Current branch head at update:** `54ab865a579d7841d6c615457743b4956fe6a20b`
+**Release-gate update:** 2026-11-20
+**Current PR head:** `91b0818e3a43f860317e962a4d951069828316f6`
+**Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
 **Project:** `mzfkamgfvxypakfkjdfs`
 **Repository:** `mavadojunior/Nabuuma-V3.5`
-**Reviewed branch:** `enforce/release-readiness-v1`
-**Reviewed commit:** `54ab865a579d7841d6c615457743b4956fe6a20b`
+**Branch:** `enforce/release-readiness-v1`
 
 ## Decision
 
-**Do not deploy yet.** The migration chain and hosted CI are validated, but independent review of the latest commit, production operational checks, and an authorized release decision remain outstanding.
+**Do not deploy yet.** The current PR head has green hosted CI, but independent human review, final pre-deployment production checks, and explicit release authorization remain outstanding.
 
 1. The platform-owned `supabase_admin` default ACL cannot be changed by the production `postgres` migration role. Current public objects were audited; future objects created by `supabase_admin` remain a platform-owned privilege risk requiring a separate decision.
-2. The latest full Supabase-stack replay completed successfully on GitHub Actions run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102). All four database jobs passed, including settlement execution and rollback. Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087) also passed.
-3. PR #4 remains open and unmerged. CodeRabbit's paused-review comment was followed by an explicit review command for the current head; the bot replied that the action finished. However, GitHub currently records no formal review submission or inline review thread. Independent approval therefore remains outstanding.
+2. Database Migration Tests run [44675406507](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406507) passed all four jobs on the exact PR head `91b0818`. Microsoft Defender run [44675406524](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406524) also passed on that head.
+3. The full Supabase local-stack replay includes the recipe-publication authorization/immutability assertions and the concurrent business-onboarding regression, in addition to the existing hook, settlement, ACL, and migration-idempotency checks.
+4. PR #4 remains open and unmerged. CodeRabbit's check is skipped because manual review is required for this OSS repository. The only listed collaborator is the repository owner; no independent reviewer is requested or recorded.
 
-The two legacy SECURITY DEFINER trigger functions are now hardened by `20261114043200_harden_legacy_trigger_search_paths.sql`. Local assertions verified both retain SECURITY DEFINER and use `search_path=pg_catalog`.
+The 2026-11-20 continuation hardens the tenant-integrity and recipe-publication paths in pending migration `20261114043000`. Read-only production checks found zero active recipe pointers, zero cross-business recipe/product references, and zero products with multiple published recipe versions. No production migration, schema, ACL, policy, or data changes were made.
+
+The two legacy SECURITY DEFINER trigger functions remain hardened by `20261114043200_harden_legacy_trigger_search_paths.sql`; the new full-schema assertions also verify the recipe and product trigger-function search paths and attachments.
 
 ## Deployment order
 
@@ -50,6 +53,12 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Removes `dispatch_financial_clearance_batch_idx` only when its definition is the known duplicate and the replacement `network_dispatch_financial_clearances_settlement_idx` exists.
 - The recipe FK and index removals now have definition preconditions. Unexpected definitions fail the transaction rather than being silently dropped.
 - The financial ledger, recipe-version and dispatch-clearance tables returned zero live rows in the production checks. All targeted index tables had zero estimated rows and small relation sizes.
+- `create_business()` now takes a per-user transaction advisory lock before the existing-membership check. A concurrent integration test forces overlapping inserts and verifies both calls return one business, with one membership and one subscription.
+- `publish_recipe()` retains the production service-role-only EXECUTE boundary. The SECURITY DEFINER body checks the forwarded user subject's owner/manager/trainer membership, locks the product row to serialize publication, and verifies the recipe/product/business relationship.
+- `prevent_published_recipe_change()` now blocks direct published inserts, updates, deletes, and unauthorized status transitions. The trusted publication function sets a transaction-local marker; the trigger accepts only the controlled draft-to-published and published-to-archived changes. Allowed draft/archived deletes return `OLD`.
+- The tenant-integrity SECURITY DEFINER trigger functions `enforce_same_business()` and `enforce_price_supplier_business()` now use `search_path=pg_catalog` with schema-qualified relations. Their EXECUTE privileges are revoked from API roles.
+- A new product trigger requires `active_recipe_version_id` to reference a published recipe version belonging to that exact product and business. Migration preconditions reject existing cross-business references, invalid active pointers, or multiple published versions per product.
+- Read-only production checks returned zero active recipe pointers, zero cross-business recipe/product references, and zero products with multiple published recipe versions.
 
 ### `20261114043100_restore_client_acl_boundaries.sql`
 
@@ -74,7 +83,9 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Production `supabase_admin` has public-schema defaults that grant API roles all eight table privileges, `SELECT`/`UPDATE`/`USAGE` on sequences, and `EXECUTE` on functions. Production `postgres` is neither a member of `supabase_admin` nor a superuser, so migration 431 cannot change those defaults. Current table/view ACLs are reconciled; future objects created by `supabase_admin` remain a platform-owned risk.
 - The two legacy SECURITY DEFINER trigger functions have been hardened by migration 432; the successful hosted full-replay run verified this on a clean Supabase stack.
 - All 12 production public views are security-invoker and report zero automatically updatable columns. Migration 430 gives `recipe_costs` `SELECT` only; migration 431 now applies `SELECT`-only grants to every public view for `anon`, `authenticated`, and `service_role`. The ACL assertion checks all seven non-SELECT privilege types across every public view.
-- CI has focused V3.15.7 and 431 jobs plus a full Supabase-stack replay covering the complete migration chain. The latest hosted run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) passed all four database jobs, including the complete replay, structural assertions, access-token hook contract, settlement execution/rollback, inherited PUBLIC DML fixture, and view-ACL idempotency.
+- CI has focused V3.15.7 and 431 jobs plus a full Supabase-stack replay covering the complete migration chain. The latest hosted run [44675406507](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406507) passed all four database jobs on PR head `91b0818`, including the complete replay, structural assertions, recipe publication/immutability tests, access-token hook contract, settlement execution/rollback, concurrent onboarding, inherited PUBLIC DML fixture, and view-ACL idempotency.
+- Microsoft Defender for DevOps run [44675406524](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406524) passed on the same PR head.
+- The GitHub-hosted workflow runs the full Supabase local stack and migration replay. The UserLAnd device itself still cannot run Docker; that local limitation does not reduce the hosted replay coverage.
 
 ## Rollback and operational risk
 
@@ -91,7 +102,7 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Updated 430 applied to a replay clone carrying the production recipe FK state; the corrected FK and structural assertions passed.
 - Updated 431 applied to the reconstructed full-schema database; 704 relation ACL rows were present and the all-view ACL assertions passed.
 - The PostgreSQL 17.6 ACL fixture and idempotency run passed locally; the full-schema test also verified all 12 public views have `SELECT` only for API roles. Migration 432 and structural assertions passed on the reconstructed full-schema database; the ACL assertions also passed there. Hosted full-replay run 43996903591 passed.
-- Full Supabase Docker reset was not run because Docker is unavailable in the UserLAnd environment. The replay used minimal Auth stubs.
+- The UserLAnd device cannot run Docker; earlier local replay therefore used minimal Auth stubs. The current GitHub-hosted run `44675406507` ran the full Supabase local stack and migration replay.
 
 ## Historical commit-preparation note — 2026-11-14
 

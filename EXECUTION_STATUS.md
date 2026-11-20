@@ -1,32 +1,43 @@
-# Current Release Gate — 2026-11-17
+# Current Release Gate — 2026-11-20
 
 **Repository:** `mavadojunior/Nabuuma-V3.5`
 **PR:** [#4 — feat: restore migration history and enforce release gates](https://github.com/mavadojunior/Nabuuma-V3.5/pull/4)
 **Branch:** `enforce/release-readiness-v1`
-**Reviewed head at update:** `54ab865a579d7841d6c615457743b4956fe6a20b`
+**Current PR head:** `91b0818e3a43f860317e962a4d951069828316f6`
+**Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
 **Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
 
 ## Current verified position
 
-- PR #4 is open, unmerged, and reported mergeable. The branch has no commits behind `main`; its current ahead count is available from the GitHub compare view.
-- Latest code-bearing head CI passed: Database Migration Tests run [44010807102](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807102) (all four jobs) and Microsoft Defender run [44010807087](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44010807087).
-- The full Supabase migration replay, structural assertions, ACL regression checks, access-token hook contract, and settlement execution/rollback assertions passed on this head.
+- PR #4 is open, unmerged, and reported mergeable. No reviewer is requested and no formal review is recorded.
+- Database Migration Tests run [44675406507](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406507) passed all four jobs on the exact PR head `91b0818`. Microsoft Defender run [44675406524](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406524) also passed on that head.
+- The full Supabase local-stack replay passed, including every recovered and pending migration, structural/security assertions, recipe publication tests, access-token hook tests, settlement execution/rollback, concurrent business onboarding, ACL regression fixtures, and view-ACL idempotency.
+- New onboarding coverage verifies that simultaneous first-time `create_business()` calls resolve to one business, one membership, and one subscription.
+- New recipe tests cover trusted service-role publication, user-membership authorization, replacement/archival, direct-publication denial, published-version immutability, cross-business references, and active-pointer integrity.
+- Read-only production checks found zero active recipe pointers, zero cross-business recipe/product references, and zero products with multiple published recipe versions. These results satisfy the new migration preconditions.
 - The production migration ledger contains 69 records and matches all 69 entries in the recovered migration manifest. No missing, mismatched, or extra records were found.
 - Four migrations remain pending production approval: `20261019000000`, `20261114043000`, `20261114043100`, and `20261114043200`.
-- Production checks in this update were read-only. No production migration, schema, ACL, policy, or data changes were made.
-- CodeRabbit's paused-review comment was followed by an explicit review command for head `54ab865a579d7841d6c615457743b4956fe6a20b`; the bot replied that the action finished. GitHub currently records no formal review submission or inline review thread, so independent approval remains outstanding.
-- Production deployment remains blocked pending independent review, backup/snapshot and fresh pre-deployment fingerprints, controlled one-at-a-time application, post-migration assertions, and explicit release authorization.
+- Production checks were read-only. No production migration, schema, ACL, policy, or data changes were made.
+- CodeRabbit's check is skipped and the bot stated that manual review is required for this OSS repository. The only listed repository collaborator is the repository owner; no independent reviewer is assigned. GitHub has no formal review submission or inline review thread.
 - The `supabase_admin` default-privilege issue remains a platform-owned residual risk for future objects created by that role. The project migration role cannot change those managed defaults.
+
+## Additional implementation in this continuation
+
+- `create_business()` now takes a per-user transaction advisory lock before checking existing membership, preventing concurrent first-time requests from creating multiple businesses.
+- The recipe publication path keeps the production service-role-only EXECUTE boundary. It serializes publication by locking the product, verifies the recipe/product/business relationship, and uses a controlled transaction-local authorization marker for publication state transitions.
+- The recipe immutability trigger now blocks direct published inserts, updates, deletes, and unauthorized status changes. It permits only the controlled publication/archival path and returns `OLD` for allowed draft/archived deletes.
+- Tenant-integrity SECURITY DEFINER trigger functions now use `search_path=pg_catalog` and are not directly executable by API roles.
+- A product active-recipe guard rejects pointers to drafts, other products, or other businesses. Migration preconditions stop if existing pointers, recipe ownership, or published-version cardinality are inconsistent.
 
 ## Outstanding release actions
 
-1. Obtain a fresh review covering the latest PR head, including all four pending migrations and the CI workflow changes.
+1. Obtain an independent human review of the current PR head and all four pending migrations.
 2. Resolve review findings and rerun CI if any code changes are made.
 3. Confirm backup/snapshot availability and capture fresh production schema, ACL, and migration-ledger evidence immediately before any deployment.
 4. Apply migrations only after explicit authorization, one at a time, in timestamp order; verify catalog and ACL assertions after each commit.
 5. Treat committed migrations as forward-only; prepare compensating migrations rather than relying on rollback SQL.
 
-**Release status:** CI validation green; independent review pending; production deployment not authorized.
+**Release status:** CI verified on the exact PR head; independent review pending; production deployment not authorized.
 
 ---
 
