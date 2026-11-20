@@ -5,13 +5,13 @@
 **Branch:** `enforce/release-readiness-v1`
 **Latest verified code/test head:** `91b0818e3a43f860317e962a4d951069828316f6`
 **Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
-**Latest CI-verified PR head:** `3ca6302495a2c40a181d79566db0556843869246` (documentation-only refresh)
+**CI-verified PR head recorded in this update:** `9ea44fe675a2b6d1fff04afbaa8924efefd7f2c8` (documentation-only refresh)
 **Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
 
 ## Current verified position
 
 - PR #4 is open, unmerged, and reported mergeable. No reviewer is requested and no formal review is recorded.
-- Database Migration Tests run [44677179045](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677179045) passed all four jobs on documentation-only PR head `3ca6302`, following verified code/test head `91b0818`. Microsoft Defender run [44677179124](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677179124) also passed on that PR head.
+- Database Migration Tests run [44677735534](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677735534) passed all four jobs on documentation-only PR head `9ea44fe`, following verified code/test head `91b0818`. Microsoft Defender run [44677735416](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44677735416) also passed on that PR head.
 - The full Supabase local-stack replay passed, including every recovered and pending migration, structural/security assertions, recipe publication tests, access-token hook tests, settlement execution/rollback, concurrent business onboarding, ACL regression fixtures, and view-ACL idempotency.
 - New onboarding coverage verifies that simultaneous first-time `create_business()` calls resolve to one business, one membership, and one subscription.
 - New recipe tests cover trusted service-role publication, user-membership authorization, replacement/archival, direct-publication denial, published-version immutability, cross-business references, and active-pointer integrity.
