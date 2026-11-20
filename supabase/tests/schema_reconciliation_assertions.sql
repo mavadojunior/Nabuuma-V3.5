@@ -64,9 +64,22 @@ BEGIN
 
     SELECT count(*) INTO v_trigger_count
     FROM pg_catalog.pg_trigger t
+    WHERE t.tgrelid = 'public.products'::regclass
+      AND t.tgname = 'products_active_recipe_guard'
+      AND t.tgfoid = 'public.enforce_product_active_recipe_business()'::regprocedure
+      AND NOT t.tgisinternal;
+    IF v_trigger_count <> 1 THEN
+        RAISE EXCEPTION 'Product active-recipe integrity trigger is missing';
+    END IF;
+
+    SELECT count(*) INTO v_trigger_count
+    FROM pg_catalog.pg_trigger t
     WHERE t.tgrelid = 'public.recipe_versions'::regclass
       AND t.tgname = 'recipe_immutable'
       AND t.tgfoid = 'public.prevent_published_recipe_change()'::regprocedure
+      AND (t.tgtype & 4) <> 0
+      AND (t.tgtype & 8) <> 0
+      AND (t.tgtype & 16) <> 0
       AND NOT t.tgisinternal;
     IF v_trigger_count <> 1 THEN
         RAISE EXCEPTION 'Published-recipe immutability trigger is missing';
@@ -76,7 +89,8 @@ BEGIN
         'v21_audit_allocation_insert',
         'v22_audit_milestone',
         'enforce_same_business',
-        'enforce_price_supplier_business'
+        'enforce_price_supplier_business',
+        'enforce_product_active_recipe_business'
     ] LOOP
         SELECT p.proconfig[array_position(p.proconfig, 'search_path=pg_catalog')]
           INTO v_search_path
@@ -118,6 +132,12 @@ BEGIN
         'authenticated', 'public.enforce_price_supplier_business()', 'EXECUTE'
     ) OR pg_catalog.has_function_privilege(
         'service_role', 'public.enforce_price_supplier_business()', 'EXECUTE'
+    ) OR pg_catalog.has_function_privilege(
+        'anon', 'public.enforce_product_active_recipe_business()', 'EXECUTE'
+    ) OR pg_catalog.has_function_privilege(
+        'authenticated', 'public.enforce_product_active_recipe_business()', 'EXECUTE'
+    ) OR pg_catalog.has_function_privilege(
+        'service_role', 'public.enforce_product_active_recipe_business()', 'EXECUTE'
     ) THEN
         RAISE EXCEPTION 'tenant-integrity trigger functions are executable by API roles';
     END IF;

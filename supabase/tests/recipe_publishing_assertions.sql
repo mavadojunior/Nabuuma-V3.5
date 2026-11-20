@@ -21,7 +21,9 @@ INSERT INTO public.businesses (id, name) VALUES
 
 INSERT INTO public.business_members (business_id, user_id, role) VALUES
   ('f1bce5e8-9bca-4dd9-bdb8-000000000003',
-   'f1bce5e8-9bca-4dd9-bdb8-000000000001', 'owner');
+   'f1bce5e8-9bca-4dd9-bdb8-000000000001', 'owner'),
+  ('f1bce5e8-9bca-4dd9-bdb8-000000000004',
+   'f1bce5e8-9bca-4dd9-bdb8-000000000002', 'owner');
 
 INSERT INTO public.products (id, business_id, code, name) VALUES
   ('f1bce5e8-9bca-4dd9-bdb8-000000000005',
@@ -47,20 +49,26 @@ INSERT INTO public.recipe_versions (
   ('f1bce5e8-9bca-4dd9-bdb8-000000000010',
    'f1bce5e8-9bca-4dd9-bdb8-000000000003',
    'f1bce5e8-9bca-4dd9-bdb8-000000000005', 4, 'draft', 'Unauthorized target',
-   'f1bce5e8-9bca-4dd9-bdb8-000000000001');
+   'f1bce5e8-9bca-4dd9-bdb8-000000000001'),
+  ('f1bce5e8-9bca-4dd9-bdb8-000000000012',
+   'f1bce5e8-9bca-4dd9-bdb8-000000000004',
+   'f1bce5e8-9bca-4dd9-bdb8-000000000006', 1, 'draft', 'Other business recipe',
+   'f1bce5e8-9bca-4dd9-bdb8-000000000002');
 
 DO $recipe_privilege_assertions$
 BEGIN
     IF NOT pg_catalog.has_function_privilege(
-        'authenticated', 'public.publish_recipe(uuid)', 'EXECUTE'
+        'service_role', 'public.publish_recipe(uuid)', 'EXECUTE'
     ) THEN
-        RAISE EXCEPTION 'authenticated cannot execute publish_recipe';
+        RAISE EXCEPTION 'service_role cannot execute publish_recipe';
     END IF;
 
     IF pg_catalog.has_function_privilege(
         'anon', 'public.publish_recipe(uuid)', 'EXECUTE'
+    ) OR pg_catalog.has_function_privilege(
+        'authenticated', 'public.publish_recipe(uuid)', 'EXECUTE'
     ) THEN
-        RAISE EXCEPTION 'publish_recipe is executable by anon';
+        RAISE EXCEPTION 'publish_recipe is exposed outside the trusted service-role contract';
     END IF;
 END
 $recipe_privilege_assertions$;
@@ -89,7 +97,7 @@ BEGIN
 END
 $cross_business_assertions$;
 
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE service_role;
 SELECT pg_catalog.set_config(
     'request.jwt.claim.sub',
     'f1bce5e8-9bca-4dd9-bdb8-000000000001',
@@ -150,6 +158,108 @@ BEGIN
 END
 $replacement_publish_assertions$;
 
+-- A second tenant can publish its own recipe through the trusted server RPC.
+SELECT pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    'f1bce5e8-9bca-4dd9-bdb8-000000000002',
+    true
+) AS business_b_sub \gset
+SELECT pg_catalog.set_config(
+    'request.jwt.claims',
+    '{"sub":"f1bce5e8-9bca-4dd9-bdb8-000000000002","role":"authenticated","aud":"authenticated"}',
+    true
+) AS business_b_claims \gset
+SELECT public.publish_recipe('f1bce5e8-9bca-4dd9-bdb8-000000000012');
+
+DO $business_b_publish_assertions$
+BEGIN
+    IF (
+        SELECT active_recipe_version_id FROM public.products
+        WHERE id = 'f1bce5e8-9bca-4dd9-bdb8-000000000006'
+    ) IS DISTINCT FROM 'f1bce5e8-9bca-4dd9-bdb8-000000000012'::uuid THEN
+        RAISE EXCEPTION 'business B product active recipe pointer was not updated';
+    END IF;
+END
+$business_b_publish_assertions$;
+
+-- Restore business A's authenticated client context for pointer and immutability checks.
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    'f1bce5e8-9bca-4dd9-bdb8-000000000001',
+    true
+) AS business_a_sub \gset
+SELECT pg_catalog.set_config(
+    'request.jwt.claims',
+    '{"sub":"f1bce5e8-9bca-4dd9-bdb8-000000000001","role":"authenticated","aud":"authenticated"}',
+    true
+) AS business_a_claims \gset
+
+-- The active recipe pointer cannot cross business/product boundaries or point
+-- to a draft version, even when the caller can update the owning product.
+DO $active_recipe_pointer_assertions$
+DECLARE
+    v_error text;
+BEGIN
+    BEGIN
+        UPDATE public.products
+        SET active_recipe_version_id = 'f1bce5e8-9bca-4dd9-bdb8-000000000012'
+        WHERE id = 'f1bce5e8-9bca-4dd9-bdb8-000000000005';
+        RAISE EXCEPTION 'cross-business active recipe pointer was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
+        IF v_error <> 'Active recipe version must be published and belong to this product' THEN
+            RAISE;
+        END IF;
+    END;
+
+    BEGIN
+        UPDATE public.products
+        SET active_recipe_version_id = 'f1bce5e8-9bca-4dd9-bdb8-000000000009'
+        WHERE id = 'f1bce5e8-9bca-4dd9-bdb8-000000000005';
+        RAISE EXCEPTION 'draft active recipe pointer was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
+        IF v_error <> 'Active recipe version must be published and belong to this product' THEN
+            RAISE;
+        END IF;
+    END;
+
+    IF (
+        SELECT active_recipe_version_id FROM public.products
+        WHERE id = 'f1bce5e8-9bca-4dd9-bdb8-000000000005'
+    ) IS DISTINCT FROM 'f1bce5e8-9bca-4dd9-bdb8-000000000008'::uuid THEN
+        RAISE EXCEPTION 'rejected pointer changes altered the active recipe';
+    END IF;
+END
+$active_recipe_pointer_assertions$;
+
+-- A client cannot insert a recipe directly in the published state.
+DO $direct_published_insert_assertions$
+DECLARE
+    v_error text;
+BEGIN
+    BEGIN
+        INSERT INTO public.recipe_versions (
+            id, business_id, product_id, version_number, status, method, created_by
+        ) VALUES (
+            'f1bce5e8-9bca-4dd9-bdb8-000000000013',
+            'f1bce5e8-9bca-4dd9-bdb8-000000000003',
+            'f1bce5e8-9bca-4dd9-bdb8-000000000005',
+            5, 'published', 'Direct publication attempt',
+            'f1bce5e8-9bca-4dd9-bdb8-000000000001'
+        );
+        RAISE EXCEPTION 'direct published recipe insert was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
+        IF v_error <> 'Use publish_recipe() to publish recipes' THEN
+            RAISE;
+        END IF;
+    END;
+END
+$direct_published_insert_assertions$;
+
 -- Direct client updates, deletes, and archived-to-published transitions remain blocked.
 DO $recipe_immutability_assertions$
 DECLARE
@@ -193,6 +303,8 @@ END
 $recipe_immutability_assertions$;
 
 -- A user without membership cannot publish another business's recipe.
+RESET ROLE;
+SET LOCAL ROLE service_role;
 SELECT pg_catalog.set_config(
     'request.jwt.claim.sub',
     'f1bce5e8-9bca-4dd9-bdb8-000000000002',
@@ -223,6 +335,8 @@ END
 $unauthorized_publish_assertions$;
 
 -- Deleting an unpublished draft is allowed; published versions remain immutable.
+RESET ROLE;
+SET LOCAL ROLE authenticated;
 SELECT pg_catalog.set_config(
     'request.jwt.claim.sub',
     'f1bce5e8-9bca-4dd9-bdb8-000000000001',

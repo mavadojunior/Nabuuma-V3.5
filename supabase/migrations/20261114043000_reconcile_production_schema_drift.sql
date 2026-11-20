@@ -1564,6 +1564,92 @@ ALTER FUNCTION public.enforce_price_supplier_business() OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.enforce_price_supplier_business()
 FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
 
+-- Protect the products.active_recipe_version_id pointer as well as the
+-- recipe_versions.business_id/product_id relationship.
+DO $active_recipe_pointer_precondition$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM public.products AS p
+        LEFT JOIN public.recipe_versions AS rv
+          ON rv.id = p.active_recipe_version_id
+        WHERE p.active_recipe_version_id IS NOT NULL
+          AND (
+              rv.id IS NULL
+              OR rv.business_id IS DISTINCT FROM p.business_id
+              OR rv.product_id IS DISTINCT FROM p.id
+              OR rv.status IS DISTINCT FROM 'published'::public.recipe_status
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'Existing active recipe pointers must reference a published version of the same product and business';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.recipe_versions AS rv
+        JOIN public.products AS p ON p.id = rv.product_id
+        WHERE rv.business_id IS DISTINCT FROM p.business_id
+    ) THEN
+        RAISE EXCEPTION
+            'Existing recipe versions contain cross-business product references';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.recipe_versions
+        WHERE status = 'published'
+        GROUP BY business_id, product_id
+        HAVING count(*) > 1
+    ) THEN
+        RAISE EXCEPTION
+            'Existing products have multiple published recipe versions; reconcile before enabling publication guards';
+    END IF;
+END
+$active_recipe_pointer_precondition$;
+
+CREATE OR REPLACE FUNCTION public.enforce_product_active_recipe_business()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE
+    v_recipe_business_id uuid;
+    v_recipe_product_id uuid;
+    v_recipe_status public.recipe_status;
+BEGIN
+    IF NEW.active_recipe_version_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT rv.business_id, rv.product_id, rv.status
+    INTO v_recipe_business_id, v_recipe_product_id, v_recipe_status
+    FROM public.recipe_versions AS rv
+    WHERE rv.id = NEW.active_recipe_version_id;
+
+    IF NOT FOUND
+       OR v_recipe_business_id IS DISTINCT FROM NEW.business_id
+       OR v_recipe_product_id IS DISTINCT FROM NEW.id
+       OR v_recipe_status IS DISTINCT FROM 'published'::public.recipe_status THEN
+        RAISE EXCEPTION
+            'Active recipe version must be published and belong to this product';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+ALTER FUNCTION public.enforce_product_active_recipe_business() OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.enforce_product_active_recipe_business()
+FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
+
+DROP TRIGGER IF EXISTS products_active_recipe_guard ON public.products;
+CREATE TRIGGER products_active_recipe_guard
+BEFORE INSERT OR UPDATE OF active_recipe_version_id, business_id
+ON public.products
+FOR EACH ROW
+EXECUTE FUNCTION public.enforce_product_active_recipe_business();
+
 CREATE OR REPLACE FUNCTION public.prevent_published_recipe_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1577,6 +1663,13 @@ DECLARE
             false
         );
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status = 'published' AND NOT v_publish_authorized THEN
+            RAISE EXCEPTION 'Use publish_recipe() to publish recipes';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     IF TG_OP = 'DELETE' THEN
         IF OLD.status = 'published' THEN
             RAISE EXCEPTION 'Published recipe versions are immutable';
@@ -1602,6 +1695,12 @@ BEGIN
 END
 $function$;
 ALTER FUNCTION public.prevent_published_recipe_change() OWNER TO postgres;
+
+DROP TRIGGER IF EXISTS recipe_immutable ON public.recipe_versions;
+CREATE TRIGGER recipe_immutable
+BEFORE INSERT OR UPDATE OR DELETE ON public.recipe_versions
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_published_recipe_change();
 
 CREATE OR REPLACE FUNCTION public.publish_recipe(p_recipe uuid)
  RETURNS void
@@ -1721,7 +1820,7 @@ END
 $function$;
 ALTER FUNCTION publish_recipe(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION publish_recipe(uuid) FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
-GRANT EXECUTE ON FUNCTION publish_recipe(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION publish_recipe(uuid) TO service_role;
 CREATE OR REPLACE FUNCTION public.v20_hash_inventory_entry(p_transaction_id uuid, p_business_id uuid, p_ingredient_id uuid, p_location_id uuid, p_batch_id uuid, p_unit text, p_quantity numeric, p_unit_cost_minor bigint, p_previous_hash text)
  RETURNS text
  LANGUAGE sql
@@ -2312,7 +2411,7 @@ BEGIN
        OR NOT pg_catalog.has_function_privilege('service_role',v_publish,'EXECUTE')
        OR pg_catalog.has_function_privilege('anon',v_publish,'EXECUTE')
        OR pg_catalog.has_function_privilege('authenticated',v_publish,'EXECUTE') THEN
-        RAISE EXCEPTION 'publish_recipe ACL does not match production';
+        RAISE EXCEPTION 'publish_recipe ACL does not match the trusted service-role contract';
     END IF;
     IF v_recipe_costs IS NULL
        OR NOT (SELECT reloptions @> ARRAY['security_invoker=true'] FROM pg_catalog.pg_class WHERE oid=v_recipe_costs)
