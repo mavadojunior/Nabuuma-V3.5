@@ -3,14 +3,15 @@
 **Repository:** `mavadojunior/Nabuuma-V3.5`
 **PR:** [#4 — feat: restore migration history and enforce release gates](https://github.com/mavadojunior/Nabuuma-V3.5/pull/4)
 **Branch:** `enforce/release-readiness-v1`
-**Current PR head:** `91b0818e3a43f860317e962a4d951069828316f6`
+**Latest verified code/test head:** `91b0818e3a43f860317e962a4d951069828316f6`
 **Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
+**Latest CI-verified PR head:** `77d652c15aa38bca87f2280d30d8cedfa47dbea5` (documentation-only refresh)
 **Production project:** `mzfkamgfvxypakfkjdfs` (PostgreSQL 17.6)
 
 ## Current verified position
 
 - PR #4 is open, unmerged, and reported mergeable. No reviewer is requested and no formal review is recorded.
-- Database Migration Tests run [44675406507](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406507) passed all four jobs on the exact PR head `91b0818`. Microsoft Defender run [44675406524](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675406524) also passed on that head.
+- Database Migration Tests run [44675940953](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675940953) passed all four jobs on documentation-only PR head `77d652c`, following verified code/test head `91b0818`. Microsoft Defender run [44675941414](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675941414) also passed on that PR head.
 - The full Supabase local-stack replay passed, including every recovered and pending migration, structural/security assertions, recipe publication tests, access-token hook tests, settlement execution/rollback, concurrent business onboarding, ACL regression fixtures, and view-ACL idempotency.
 - New onboarding coverage verifies that simultaneous first-time `create_business()` calls resolve to one business, one membership, and one subscription.
 - New recipe tests cover trusted service-role publication, user-membership authorization, replacement/archival, direct-publication denial, published-version immutability, cross-business references, and active-pointer integrity.
