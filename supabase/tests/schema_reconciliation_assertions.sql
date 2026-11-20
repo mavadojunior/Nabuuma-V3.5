@@ -120,6 +120,16 @@ BEGIN
         RAISE EXCEPTION 'prevent_published_recipe_change search_path is not hardened';
     END IF;
 
+    SELECT p.proconfig[array_position(p.proconfig, 'search_path=pg_catalog, pg_temp')]
+      INTO v_search_path
+      FROM pg_catalog.pg_proc p
+     WHERE p.oid = 'public.publish_recipe(uuid)'::regprocedure
+       AND p.prosecdef;
+
+    IF v_search_path IS DISTINCT FROM 'search_path=pg_catalog, pg_temp' THEN
+        RAISE EXCEPTION 'publish_recipe SECURITY DEFINER search_path is not hardened';
+    END IF;
+
     IF pg_catalog.has_function_privilege(
         'anon', 'public.enforce_same_business()', 'EXECUTE'
     ) OR pg_catalog.has_function_privilege(
