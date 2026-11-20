@@ -4,17 +4,17 @@
 **Release-gate update:** 2026-11-20
 **Latest verified code/test head:** `91b0818e3a43f860317e962a4d951069828316f6`
 **Latest production-code commit:** `4ecabc6533bfbfeaf74bf199c14a330e63735124`
-**Latest CI-verified PR head:** `77d652c15aa38bca87f2280d30d8cedfa47dbea5` (documentation-only refresh)
+**Latest CI-verified PR head:** `fa705e0e8c146906d17818c4715c8ae67cc7e1ef` (documentation-only refresh)
 **Project:** `mzfkamgfvxypakfkjdfs`
 **Repository:** `mavadojunior/Nabuuma-V3.5`
 **Branch:** `enforce/release-readiness-v1`
 
 ## Decision
 
-**Do not deploy yet.** The current PR head has green hosted CI, but independent human review, final pre-deployment production checks, and explicit release authorization remain outstanding.
+**Do not deploy yet.** The latest code/test head and subsequent documentation-only refresh have green hosted CI. Independent human review, final pre-deployment production checks, and explicit release authorization remain outstanding.
 
 1. The platform-owned `supabase_admin` default ACL cannot be changed by the production `postgres` migration role. Current public objects were audited; future objects created by `supabase_admin` remain a platform-owned privilege risk requiring a separate decision.
-2. Database Migration Tests run [44675940953](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675940953) passed all four jobs on documentation-only PR head `77d652c`, following verified code/test head `91b0818`. Microsoft Defender run [44675941414](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675941414) also passed on that PR head.
+2. Database Migration Tests run [44676316941](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44676316941) passed all four jobs on documentation-only PR head `fa705e0`, following verified code/test head `91b0818`. Microsoft Defender run [44676316884](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44676316884) also passed on that PR head.
 3. The full Supabase local-stack replay includes the recipe-publication authorization/immutability assertions and the concurrent business-onboarding regression, in addition to the existing hook, settlement, ACL, and migration-idempotency checks.
 4. PR #4 remains open and unmerged. CodeRabbit's check is skipped because manual review is required for this OSS repository. The only listed collaborator is the repository owner; no independent reviewer is requested or recorded.
 
@@ -84,8 +84,8 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Production `supabase_admin` has public-schema defaults that grant API roles all eight table privileges, `SELECT`/`UPDATE`/`USAGE` on sequences, and `EXECUTE` on functions. Production `postgres` is neither a member of `supabase_admin` nor a superuser, so migration 431 cannot change those defaults. Current table/view ACLs are reconciled; future objects created by `supabase_admin` remain a platform-owned risk.
 - The two legacy SECURITY DEFINER trigger functions have been hardened by migration 432; the successful hosted full-replay run verified this on a clean Supabase stack.
 - All 12 production public views are security-invoker and report zero automatically updatable columns. Migration 430 gives `recipe_costs` `SELECT` only; migration 431 now applies `SELECT`-only grants to every public view for `anon`, `authenticated`, and `service_role`. The ACL assertion checks all seven non-SELECT privilege types across every public view.
-- CI has focused V3.15.7 and 431 jobs plus a full Supabase-stack replay covering the complete migration chain. The latest hosted run [44675940953](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675940953) passed all four database jobs on documentation-only PR head `77d652c`, following verified code/test head `91b0818`. It includes the complete replay, structural assertions, recipe publication/immutability tests, access-token hook contract, settlement execution/rollback, concurrent onboarding, inherited PUBLIC DML fixture, and view-ACL idempotency.
-- Microsoft Defender for DevOps run [44675941414](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44675941414) passed on the same PR head.
+- CI has focused V3.15.7 and 431 jobs plus a full Supabase-stack replay covering the complete migration chain. The latest hosted run [44676316941](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44676316941) passed all four database jobs on documentation-only PR head `fa705e0`, following verified code/test head `91b0818`. It includes the complete replay, structural assertions, recipe publication/immutability tests, access-token hook contract, settlement execution/rollback, concurrent onboarding, inherited PUBLIC DML fixture, and view-ACL idempotency.
+- Microsoft Defender for DevOps run [44676316884](https://github.com/mavadojunior/Nabuuma-V3.5/actions/runs/44676316884) passed on the same PR head.
 - The GitHub-hosted workflow runs the full Supabase local stack and migration replay. The UserLAnd device itself still cannot run Docker; that local limitation does not reduce the hosted replay coverage.
 
 ## Rollback and operational risk
@@ -103,7 +103,7 @@ Do not reorder them. V3.15.7 establishes the `audit_logs` restrictive guards. Th
 - Updated 430 applied to a replay clone carrying the production recipe FK state; the corrected FK and structural assertions passed.
 - Updated 431 applied to the reconstructed full-schema database; 704 relation ACL rows were present and the all-view ACL assertions passed.
 - The PostgreSQL 17.6 ACL fixture and idempotency run passed locally; the full-schema test also verified all 12 public views have `SELECT` only for API roles. Migration 432 and structural assertions passed on the reconstructed full-schema database; the ACL assertions also passed there. Hosted full-replay run 43996903591 passed.
-- The UserLAnd device cannot run Docker; earlier local replay therefore used minimal Auth stubs. The current GitHub-hosted run `44675940953` ran the full Supabase local stack and migration replay.
+- The UserLAnd device cannot run Docker; earlier local replay therefore used minimal Auth stubs. The current GitHub-hosted run `44676316941` ran the full Supabase local stack and migration replay.
 
 ## Historical commit-preparation note — 2026-11-14
 
