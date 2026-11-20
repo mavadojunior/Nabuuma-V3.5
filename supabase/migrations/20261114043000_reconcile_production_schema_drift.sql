@@ -1460,6 +1460,149 @@ AS $function$ BEGIN NEW.id:=OLD.id; NEW.business_id:=OLD.business_id; NEW.create
 ALTER FUNCTION protect_system_columns() OWNER TO postgres;
 REVOKE ALL ON FUNCTION protect_system_columns() FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
 GRANT EXECUTE ON FUNCTION protect_system_columns() TO PUBLIC, "anon", "authenticated", "service_role";
+-- Harden the tenant-integrity trigger functions. Their trigger attachments
+-- were established by the recovered migration history; only their bodies and
+-- fixed search paths are refreshed here.
+CREATE OR REPLACE FUNCTION public.enforce_same_business()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE
+    parent_business uuid;
+    child_business uuid;
+BEGIN
+    IF TG_TABLE_NAME = 'recipe_ingredients' THEN
+        SELECT business_id INTO parent_business
+        FROM public.recipe_versions
+        WHERE id = NEW.recipe_version_id;
+        SELECT business_id INTO child_business
+        FROM public.ingredients
+        WHERE id = NEW.ingredient_id;
+    ELSIF TG_TABLE_NAME = 'ingredient_prices' THEN
+        SELECT business_id INTO parent_business
+        FROM public.ingredients
+        WHERE id = NEW.ingredient_id;
+        child_business := NEW.business_id;
+    ELSIF TG_TABLE_NAME = 'recipe_versions' THEN
+        SELECT business_id INTO parent_business
+        FROM public.products
+        WHERE id = NEW.product_id;
+        child_business := NEW.business_id;
+    ELSIF TG_TABLE_NAME IN ('inventory_movements', 'waste_records') THEN
+        SELECT business_id INTO parent_business
+        FROM public.ingredients
+        WHERE id = NEW.ingredient_id;
+        child_business := NEW.business_id;
+    ELSIF TG_TABLE_NAME IN (
+        'training_assignments', 'assessments', 'certifications'
+    ) THEN
+        SELECT business_id INTO parent_business
+        FROM public.staff_profiles
+        WHERE id = NEW.staff_id;
+        SELECT business_id INTO child_business
+        FROM public.courses
+        WHERE id = NEW.course_id;
+    ELSIF TG_TABLE_NAME IN ('qc_checks', 'service_events') THEN
+        SELECT business_id INTO parent_business
+        FROM public.products
+        WHERE id = NEW.product_id;
+        child_business := NEW.business_id;
+    ELSE
+        RETURN NEW;
+    END IF;
+
+    IF parent_business IS NULL
+       OR child_business IS NULL
+       OR parent_business <> child_business THEN
+        RAISE EXCEPTION 'Cross-business reference rejected';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+ALTER FUNCTION public.enforce_same_business() OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.enforce_same_business()
+FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
+
+CREATE OR REPLACE FUNCTION public.enforce_price_supplier_business()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE
+    ingredient_business uuid;
+    supplier_business uuid;
+BEGIN
+    SELECT business_id
+    INTO ingredient_business
+    FROM public.ingredients
+    WHERE id = NEW.ingredient_id;
+
+    IF NEW.supplier_id IS NOT NULL THEN
+        SELECT business_id
+        INTO supplier_business
+        FROM public.suppliers
+        WHERE id = NEW.supplier_id;
+    END IF;
+
+    IF ingredient_business IS NULL
+       OR ingredient_business <> NEW.business_id
+       OR (
+           NEW.supplier_id IS NOT NULL
+           AND supplier_business IS DISTINCT FROM NEW.business_id
+       ) THEN
+        RAISE EXCEPTION 'Cross-business price reference rejected';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+ALTER FUNCTION public.enforce_price_supplier_business() OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.enforce_price_supplier_business()
+FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
+
+CREATE OR REPLACE FUNCTION public.prevent_published_recipe_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog'
+AS $function$
+DECLARE
+    v_publish_authorized boolean :=
+        current_user = 'postgres'
+        AND COALESCE(
+            pg_catalog.current_setting('nabuuma.publish_recipe', true) = 'on',
+            false
+        );
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        IF OLD.status = 'published' THEN
+            RAISE EXCEPTION 'Published recipe versions are immutable';
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    IF OLD.status = 'published' THEN
+        IF v_publish_authorized
+           AND NEW.status = 'archived'
+           AND (pg_catalog.to_jsonb(NEW) - 'status') =
+               (pg_catalog.to_jsonb(OLD) - 'status') THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION 'Published recipe versions are immutable';
+    END IF;
+
+    IF NEW.status = 'published' AND NOT v_publish_authorized THEN
+        RAISE EXCEPTION 'Use publish_recipe() to publish recipes';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+ALTER FUNCTION public.prevent_published_recipe_change() OWNER TO postgres;
+
 CREATE OR REPLACE FUNCTION public.publish_recipe(p_recipe uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -1468,31 +1611,117 @@ CREATE OR REPLACE FUNCTION public.publish_recipe(p_recipe uuid)
 AS $function$
 DECLARE
     r public.recipe_versions%ROWTYPE;
+    v_product_id uuid;
+    v_business_id uuid;
+    v_product_business_id uuid;
 BEGIN
-    SELECT * INTO r FROM public.recipe_versions WHERE id = p_recipe;
+    SELECT * INTO r
+    FROM public.recipe_versions
+    WHERE id = p_recipe;
+
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Not permitted';
     END IF;
+
+    v_product_id := r.product_id;
+    v_business_id := r.business_id;
+
+    IF NOT public.has_role(
+        v_business_id,
+        ARRAY['owner','manager','trainer']::public.member_role[]
+    ) THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+
+    -- Serialize publications for one product and verify the recipe belongs
+    -- to that product's business before changing either record.
+    SELECT p.business_id
+    INTO v_product_business_id
+    FROM public.products AS p
+    WHERE p.id = v_product_id
+    FOR UPDATE;
+
+    IF NOT FOUND OR v_product_business_id IS DISTINCT FROM v_business_id THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+
+    SELECT *
+    INTO r
+    FROM public.recipe_versions
+    WHERE id = p_recipe
+    FOR UPDATE;
+
+    IF NOT FOUND
+       OR r.product_id IS DISTINCT FROM v_product_id
+       OR r.business_id IS DISTINCT FROM v_business_id THEN
+        RAISE EXCEPTION 'Recipe changed during publication; retry';
+    END IF;
+
     IF NOT public.has_role(
         r.business_id,
         ARRAY['owner','manager','trainer']::public.member_role[]
     ) THEN
         RAISE EXCEPTION 'Not permitted';
     END IF;
+
+    IF r.status = 'published' THEN
+        IF EXISTS (
+            SELECT 1
+            FROM public.recipe_versions AS other_version
+            WHERE other_version.product_id = r.product_id
+              AND other_version.business_id = r.business_id
+              AND other_version.status = 'published'
+              AND other_version.id <> r.id
+        ) THEN
+            RAISE EXCEPTION 'Product has multiple published recipe versions';
+        END IF;
+
+        UPDATE public.products
+        SET active_recipe_version_id = r.id
+        WHERE id = r.product_id
+          AND business_id = r.business_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Not permitted';
+        END IF;
+        RETURN;
+    END IF;
+
+    PERFORM pg_catalog.set_config('nabuuma.publish_recipe', 'on', true);
+
     UPDATE public.recipe_versions
-       SET status = 'archived'
-     WHERE product_id = r.product_id AND status = 'published' AND id <> r.id;
+    SET status = 'archived'
+    WHERE product_id = r.product_id
+      AND business_id = r.business_id
+      AND status = 'published'
+      AND id <> r.id;
+
     UPDATE public.recipe_versions
-       SET status = 'published', published_at = pg_catalog.now()
-     WHERE id = r.id;
+    SET status = 'published',
+        published_at = pg_catalog.now()
+    WHERE id = r.id
+      AND product_id = r.product_id
+      AND business_id = r.business_id
+      AND status <> 'published';
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Recipe could not be published; retry';
+    END IF;
+
     UPDATE public.products
-       SET active_recipe_version_id = r.id
-     WHERE id = r.product_id;
+    SET active_recipe_version_id = r.id
+    WHERE id = r.product_id
+      AND business_id = r.business_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not permitted';
+    END IF;
+
+    PERFORM pg_catalog.set_config('nabuuma.publish_recipe', 'off', true);
 END
 $function$;
 ALTER FUNCTION publish_recipe(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION publish_recipe(uuid) FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin;
-GRANT EXECUTE ON FUNCTION publish_recipe(uuid) TO "service_role";
+GRANT EXECUTE ON FUNCTION publish_recipe(uuid) TO authenticated;
 CREATE OR REPLACE FUNCTION public.v20_hash_inventory_entry(p_transaction_id uuid, p_business_id uuid, p_ingredient_id uuid, p_location_id uuid, p_batch_id uuid, p_unit text, p_quantity numeric, p_unit_cost_minor bigint, p_previous_hash text)
  RETURNS text
  LANGUAGE sql
