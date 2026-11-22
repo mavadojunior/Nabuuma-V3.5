@@ -6,9 +6,36 @@ Nabuuma V3.5 is the operational command centre for the Nabuuma hospitality ecosy
 
 It connects hospitality operations, procurement, inventory, suppliers, logistics, training, quality control, cross-border commerce, fiscalization, financial settlement, and cryptographic evidence into one controlled operational system.
 
-> **Repository status (2026-11-14):** this checkout currently contains database/security work and repository automation, not the complete application. The application directories and package scripts described below are target architecture, not implemented code in this branch. See the [repository audit](docs/REPOSITORY_AUDIT_2026-11-14.md) and [production migration-history reconciliation](docs/MIGRATION_HISTORY_RECONCILIATION_2026-11-14.md) before treating planned components or migrations as available.
+> **Repository status (2026-11-22):** the restored first Next.js application slice from the V3.5 MVP lineage passes typecheck, lint, and Webpack production build under Node 22.23.3. Vitest passes 10 mocked Auth-boundary tests. The native PostgreSQL runner replays 73 migrations and passes all eight SQL acceptance suites. These checks do not start GoTrue: Docker and Podman are unavailable in this UserLAnd environment, so full Supabase Auth HTTP integration remains unverified. Runtime tenant CRUD coverage is still focused on `public.products`; the broader tenant-table matrix remains open. Products and Recipes remain on hold. See the current [execution status](EXECUTION_STATUS.md), [repository audit](docs/REPOSITORY_AUDIT_2026-11-14.md), and [production migration-history reconciliation](docs/MIGRATION_HISTORY_RECONCILIATION_2026-11-14.md).
 
 The system is designed to turn hospitality activity into traceable, auditable, and economically accountable operations.
+
+
+## Application Setup (Restored First Slice)
+
+Use Node.js 22 or later and pnpm 10.28.2.
+
+```bash
+corepack pnpm@10.28.2 install --frozen-lockfile
+cp .env.example .env.local
+corepack pnpm@10.28.2 dev
+```
+
+Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env.local`. A legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a fallback. Never place a Supabase `service_role` or secret key in a `NEXT_PUBLIC_` variable.
+
+Available checks:
+
+```bash
+corepack pnpm@10.28.2 typecheck
+corepack pnpm@10.28.2 lint
+corepack pnpm@10.28.2 build
+corepack pnpm@10.28.2 test:auth
+corepack pnpm@10.28.2 test:db
+# Optional full Supabase container stack:
+corepack pnpm@10.28.2 test:db:supabase
+```
+
+`test:auth` runs Vitest tests for the browser SDK and request/session boundary; these tests mock Supabase clients and do not contact GoTrue. `test:db` runs the repository's isolated native PostgreSQL migration replay and SQL acceptance suites. It uses a disposable local database named `nabuuma_rls_test`; the runner refuses any other database name. It does not contact hosted Supabase or run the GoTrue Auth HTTP service. `test:db:supabase` is the optional Docker/Podman-backed Supabase CLI test and requires the full local Supabase stack. Neither database command targets production. The first restored application slice is not approved for deployment until runtime Auth and RLS integration tests against an isolated Supabase Auth environment pass.
 
 ## Engineering Workflow
 
@@ -178,7 +205,7 @@ Application code must not duplicate authoritative business rules that belong in 
 
 ## Target Repository Structure
 
-The following layout describes the intended application structure. It is not a claim that these directories are present in the current checkout.
+The following layout describes the current application slice and planned expansion. Some domain modules and supporting directories remain unimplemented.
 
 ```
 app/
@@ -202,8 +229,8 @@ public/
   CI/CD
   CODEOWNERS
 
-middleware.ts
-  Request/session boundary
+proxy.ts
+  Next.js 16 request/session boundary
 
 package.json
   Runtime dependencies and scripts

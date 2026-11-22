@@ -12,3 +12,4 @@ supabase/.branches/
 *.log
 *.bak
 *.bak_*
+test/logs/

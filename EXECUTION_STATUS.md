@@ -40,6 +40,19 @@
 
 **Release status:** Latest code/test head and subsequent documentation-only refresh passed hosted CI; independent review pending; production deployment not authorized.
 
+## Application Restoration Update — 2026-11-21
+
+- An initial Next.js application slice has been restored in the local working tree from the verified V3.5 MVP archive: login, root redirect, shared layout/styles, dashboard, Supabase browser client, business membership/onboarding helpers, middleware, navigation, TypeScript path alias, and public environment-variable template.
+- The uploaded login page, layout, and global stylesheet were compared with the V3.11 Integrated archive; their source content matches the V3.5 application lineage. The shared auth and tenant helpers are also unchanged between the V3.5 and V3.11 archives.
+- The onboarding helper now re-reads membership after `create_business()`. This handles the function's `already_member` response, which returns the business identifier and role without the embedded business object. Membership query errors are no longer treated as an absent membership.
+- The dashboard query now uses the recovered `products_active_recipe_fk` constraint, filters each read by the resolved `business_id`, and surfaces query errors. Navigation is limited to the restored dashboard route so it does not link to missing modules.
+- Static verification passed: `bash scripts/engineering-preflight.sh`, JSON parsing for `tsconfig.json` and `package.json`, application-file presence checks, static auth/tenant contract checks, and whitespace checks on untracked files.
+- Application build/typecheck/lint/integration tests remain blocked. The repository package manifest still contains only `aasvg`; the Next.js, React, and Supabase dependencies and a lockfile have not been restored. The npm registry request timed out (exit 124), and no TypeScript compiler is installed in the environment.
+- The restored files are untracked local work. No package manifest, lockfile, migration, database, production state, Git history, commit, push, or deployment was changed.
+- The uploaded live logistics security test was not run because it contains successful POD finalization writes. The uploaded seed SQL was not executed.
+
+**Application status:** source slice restored locally; build and runtime verification blocked pending dependency resolution and test tooling. Do not treat this as a deployable application.
+
 ---
 
 # Nabuuma V3.5 Execution Status
@@ -260,3 +273,57 @@ A README claim does not constitute implementation.
 **Repository is a work-in-progress toward the canonical Nabuuma V3.5 specification.**
 
 **No feature is considered production-ready until this matrix reflects ✓ Implemented status.**
+
+
+## Dependency Restoration & Build Gate — 2026-11-21
+
+**Status:** application source, pinned dependencies, lockfile, typecheck, lint, and production build are restored and verified. Authentication/RLS integration remains blocked by the absence of a local Supabase runtime. Products and Recipes work must remain on hold until that integration gate passes.
+
+### Restored runtime
+
+- Runtime baseline: Node.js `>=22.0.0`; verification runtime Node `22.23.3`.
+- Package manager: pnpm `10.28.2`; `pnpm-lock.yaml` is the authoritative lockfile. The old minimal npm lockfile was removed.
+- Pinned runtime dependencies: `next@16.4.6`, `react@19.3.1`, `react-dom@19.3.1`, `@supabase/ssr@0.12.7`, `@supabase/supabase-js@2.119.2`, `qrcode@1.5.4`, and preserved `aasvg@0.4.3`.
+- Pinned development dependencies: `typescript@5.9.3`, `eslint@9.39.5`, `eslint-config-next@16.4.6`, `@types/node@22.19.0`, `@types/react@19.3.0`, and `@types/react-dom@19.3.0`.
+- `package.json` defines `typecheck`, `lint`, `build`, and explicitly local-only `test:db` scripts.
+- Next.js 16 session handling now uses root `proxy.ts` and `supabase.auth.getClaims()`. The browser client accepts a Supabase publishable key, with legacy anon-key fallback. No service-role or secret key is exposed.
+- `next build --webpack` is the build command because Turbopack fails on this UserLAnd filesystem with `Invalid symlink: Invalid argument (os error 22)`.
+
+### Verification evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Dependency install | PASS | `pnpm install --frozen-lockfile` completed with pnpm 10.28.2 |
+| TypeScript | PASS | `pnpm run typecheck` under Node 22.23.3, including the final `@types/node@22.19.0` update |
+| Lint | PASS | `pnpm run lint` under Node 22.23.3 |
+| Production build | PASS | `pnpm run build` (`next build --webpack`); compiled, completed TypeScript, generated static pages, and emitted `/`, `/dashboard`, `/login`, and `/_not-found` |
+| Repository preflight | PASS | `bash scripts/engineering-preflight.sh`; 69 migration files match the recovered manifest |
+| Whitespace | PASS | `git diff --check` |
+| Local DB integration | BLOCKED | `supabase test db --local` stopped before tests: connection refused at `127.0.0.1:54322`; Docker is not installed and no local Postgres listener is running |
+
+### Remaining acceptance gate
+
+1. Provide a local Supabase runtime with Docker, or an isolated disposable staging Supabase project approved for integration testing.
+2. Run the existing pgTAP database suite locally and add/execute the application authentication and tenant-isolation integration checks against that isolated environment.
+3. Verify unauthenticated denial, authenticated membership resolution, tenant boundary enforcement, and denied cross-tenant reads/writes. Do not run the write-bearing suite against production.
+4. Only after those checks pass, begin the Products and Recipes vertical slice.
+
+No `.env.local` credentials were created. No production database tests, migrations, data changes, deployments, commits, or pushes were performed. The application has not yet been runtime-authenticated against a real Supabase Auth service.
+
+
+## Application and Local Verification Update — 2026-11-22
+
+**Scope:** restored first Next.js application slice and no-cost local verification only.
+
+- Runtime used: Node.js `22.23.3`, pnpm `10.28.2`.
+- TypeScript: PASS (`pnpm typecheck`, exit 0).
+- ESLint: PASS (`pnpm lint`, exit 0).
+- Production build: PASS (`pnpm build`, `next build --webpack`, exit 0). Webpack compilation, Next.js TypeScript phase, static generation of all five pages, and build tracing completed. The build emits `/`, `/dashboard`, `/login`, and `/_not-found`; request protection is handled by `proxy.ts`.
+- Vitest: PASS, 2 files and 10 tests. These tests mock `@supabase/ssr`; they verify the browser-client configuration and request/session boundary but do not call GoTrue.
+- Native PostgreSQL Auth/RLS acceptance: PASS. `pnpm test:db` recreated only the guarded disposable database `nabuuma_rls_test`, replayed all 73 migrations with the documented test-only pg_cron override, and passed all eight SQL suites with `FINAL_SQL_ACCEPTANCE_FAILURES=0`.
+- Destructive-runner guard: PASS. Setting `TEST_DB=postgres` is rejected with exit 2 before any database operation.
+- Full local Supabase stack: BLOCKED by environment. `supabase status` reports `docker: command not found (podman also not found)`. Therefore the GoTrue Auth HTTP service and full container-backed Supabase integration were not run.
+- Workflow correction: `test:db` now invokes the native PostgreSQL replay runner; `test:db:supabase` retains the optional Docker/Podman-backed Supabase CLI test. The native runner refuses database names other than `nabuuma_rls_test`. Generated test logs are ignored by Git.
+- Security boundary remains HOLD: the SQL runtime CRUD matrix exercises `public.products` across anon, cross-tenant authenticated, authorized owner, and service-role contexts. It does not yet provide per-operation runtime coverage for every tenant-scoped table. Catalog RLS coverage is not a substitute for that matrix.
+
+**Production and cloud boundary:** no hosted Supabase write, migration, data change, deployment, or paid cloud resource was used. Products and Recipes remain on hold pending full Auth runtime verification and broader tenant-table acceptance coverage.
